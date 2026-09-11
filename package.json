@@ -1,0 +1,16 @@
+{
+  "name": "teamai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TeamAI - 团队 AI 协作工具（服务端 + 客户端 monorepo）",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @teamai/server dev",
+    "dev:client": "pnpm --filter @teamai/client dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
