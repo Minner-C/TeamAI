@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TeamAI 服务端控制台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; }
+  .login-wrap { height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { background: #fff; border-radius: 10px; padding: 28px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .login-card { width: 360px; }
+  h1 { font-size: 20px; text-align: center; margin-bottom: 20px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; margin-bottom: 10px; }
+  button { padding: 8px 16px; border: none; border-radius: 6px; background: #1677ff; color: #fff; font-size: 14px; cursor: pointer; }
+  button.ghost { background: #fff; color: #1677ff; border: 1px solid #1677ff; }
+  button.danger { background: #ff4d4f; }
+  button.sm { padding: 3px 10px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .err { color: #ff4d4f; font-size: 13px; margin-top: 8px; }
+  .layout { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tabs button { background: #fff; color: #333; border: 1px solid #d9d9d9; }
+  .tabs button.on { background: #1677ff; color: #fff; border-color: #1677ff; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  th { background: #fafafa; }
+  .stats { display: flex; gap: 16px; margin-bottom: 16px; }
+  .stat { flex: 1; background: #fff; border-radius: 8px; padding: 16px; }
+  .stat .n { font-size: 24px; font-weight: 700; color: #1677ff; }
+  .stat .t { font-size: 12px; color: #999; margin-top: 4px; }
+  .section { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .section h3 { font-size: 15px; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row input, .row select { width: auto; min-width: 140px; margin-bottom: 0; }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #f0f0f0; }
+  .tag.on { background: #e6f7e6; color: #389e0d; }
+  .tag.off { background: #fff1f0; color: #cf1322; }
+  .hint { font-size: 12px; color: #999; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+let token = localStorage.getItem("teamai_admin_token") || "";
+let me = null;
+let tab = "usage";
+
+async function req(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+  });
+  if (res.status === 401) { logout(); throw new Error("登录已过期"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `${res.status}`);
+  return data;
+}
+
+function logout() {
+  token = "";
+  localStorage.removeItem("teamai_admin_token");
+  renderLogin();
+}
+
+async function renderLogin() {
+  document.querySelector("#app").innerHTML = `
+    <div class="login-wrap"><div class="card login-card">
+      <h1>TeamAI 服务端控制台</h1>
+      <input id="email" placeholder="邮箱（默认 admin@teamai.local）" />
+      <input id="pw" type="password" placeholder="密码（默认 admin123）" />
+      <button style="width:100%" onclick="doLogin()">登录</button>
+      <div class="err" id="err"></div>
+      <div class="hint">管理端建议仅在内网访问；密钥等敏感操作请谨慎。</div>
+    </div></div>`;
+  $("#pw").addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
+}
+
+async function doLogin() {
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: $("#email").value, password: $("#pw").value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "登录失败");
+    token = data.token;
+    me = data.user;
+    localStorage.setItem("teamai_admin_token", token);
+    renderMain();
+  } catch (e) { $("#err").textContent = e.message; }
+}
+
+function renderMain() {
+  document.querySelector("#app").innerHTML = `
+    <div class="layout">
+      <div class="topbar">
+        <h1 style="text-align:left;margin:0">TeamAI 控制台</h1>
+        <div class="row">
+          <span>${me.name}（${me.role}）</span>
+          <button class="ghost sm" onclick="logout()">退出</button>
+        </div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div id="content"></div>
+    </div>`;
+  const tabs = [
+    ["usage", "用量总览"],
+    ["providers", "模型 Provider"],
+    ["keys", "虚拟 Key"],
+    ["users", "成员"],
+    ["repos", "Git 仓库"],
+  ];
+  $("#tabs").innerHTML = tabs.map(([k, n]) =>
+    `<button class="${k === tab ? "on" : ""}" onclick="switchTab('${k}')">${n}</button>`).join("");
+  renderTab();
+}
+
+function switchTab(k) { tab = k; renderMain(); }
+
+async function renderTab() {
+  const c = $("#content");
+  c.innerHTML = "加载中…";
+  try {
+    if (tab === "usage") await renderUsage(c);
+    else if (tab === "providers") await renderProviders(c);
+    else if (tab === "keys") await renderKeys(c);
+    else if (tab === "users") await renderUsers(c);
+    else if (tab === "repos") await renderRepos(c);
+  } catch (e) { c.innerHTML = `<div class="err">${e.message}</div>`; }
+}
+
+async function renderUsage(c) {
+  const s = await req("/api/usage/summary");
+  const rows = Object.entries(s.byModel).map(([m, v]) =>
+    `<tr><td>${m}</td><td>${v.tokensIn}</td><td>${v.tokensOut}</td><td>${v.tokensIn + v.tokensOut}</td></tr>`).join("");
+  c.innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="n">${s.totalTokensIn}</div><div class="t">输入 Tokens</div></div>
+      <div class="stat"><div class="n">${s.totalTokensOut}</div><div class="t">输出 Tokens</div></div>
+      <div class="stat"><div class="n">${s.totalCost.toFixed(4)}</div><div class="t">估算成本</div></div>
+    </div>
+    <div class="section"><h3>按模型</h3>
+      <table><tr><th>模型</th><th>输入</th><th>输出</th><th>合计</th></tr>${rows || "<tr><td colspan=4>暂无数据</td></tr>"}</table>
+    </div>`;
+}
+
+async function renderProviders(c) {
+  const { providers } = await req("/api/admin/providers");
+  const rows = providers.map((p) => `
+    <tr>
+      <td>${p.name}</td><td>${p.type}</td>
+      <td class="mono">${p.baseUrl}</td>
+      <td>${p.models.join(", ") || "<i>全部模型</i>"}</td>
+      <td><span class="tag ${p.enabled ? "on" : "off"}">${p.enabled ? "启用" : "停用"}</span></td>
+      <td>
+        <button class="sm ghost" onclick="toggleProvider('${p.id}', ${!p.enabled})">${p.enabled ? "停用" : "启用"}</button>
+        <button class="sm danger" onclick="delProvider('${p.id}')">删除</button>
+      </td>
+    </tr>`).join("");
+  c.innerHTML = `
+    <div class="section"><h3>添加上游 Provider（真实 API Key 加密后仅存服务端）</h3>
+      <div class="row">
+        <input id="p-name" placeholder="名称，如 deepseek" />
+        <select id="p-type">
+          <option value="openai-compatible">OpenAI 兼容（DeepSeek/GLM/Qwen/Moonshot…）</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="gemini">Gemini</option>
+        </select>
+        <input id="p-url" placeholder="Base URL，如 https://api.deepseek.com" style="min-width:260px" />
+        <input id="p-key" placeholder="真实 API Key" />
+        <input id="p-models" placeholder="模型列表，逗号分隔（空=通配）" />
+        <button onclick="addProvider()">添加</button>
+      </div>
+      <div class="hint">客户端 CLI / Agent 的 BASE_URL 指向本服务的 /v1 即可，无需真实 Key。</div>
+    </div>
+    <div class="section"><h3>Provider 列表</h3>
+      <table><tr><th>名称</th><th>类型</th><th>Base URL</th><th>模型</th><th>状态</th><th>操作</th></tr>
+      ${rows || "<tr><td colspan=6>暂无 provider</td></tr>"}</table>
+    </div>`;
+}
+
+async function addProvider() {
+  try {
+    await req("/api/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("#p-name").value, type: $("#p-type").value, baseUrl: $("#p-url").value,
+        apiKey: $("#p-key").value,
+        models: $("#p-models").value.split(",").map((s) => s.trim()).filter(Boolean),
+      }),
+    });
+    renderTab();
+  } catch (e) { alert(e.message); }
+}
+async function toggleProvider(id, enabled) {
+  await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+  renderTab();
+}
+async function delProvider(id) {
+  if (!confirm("删除该 provider？")) return;
+  await req(`/api/admin/providers/${id}`, { method: "DELETE" });
+  renderTab();
+}
+
+async function renderKeys(c) {
+  const { keys } = await req("/api/keys");
+  const rows = keys.map((k) => `
+    <tr>
+      <td class="mono">${k.key.slice(0, 12)}…</td>
+      <td>${k.name || "-"}</td>
+      <td>${k.quota_tokens ?? "不限"}</td>
+      <td>${k.revoked_at ? '<span class="tag off">已吊销</span>' : '<span class="tag on">有效</span>'}</td>
+      <td>${new Date(k.created_at).toLocaleString("zh-CN")}</td>
+      <td>${k.revoked_at ? "" : `<button class="sm danger" onclick="revokeKey('${k.id}')">吊销</button>`}</td>
+    </tr>`).join("");
+  c.innerHTML = `
+    <div class="section"><h3>签发虚拟 Key（给客户端 CLI 使用）</h3>
+      <div class="row">
+        <input id="k-name" placeholder="备注名" />
+        <input id="k-quota" type="number" placeholder="token 配额（空=不限）" />
+        <button onclick="createKey()">签发</button>
+      </div>
+      <div class="hint mono" id="new-key"></div>
+    </div>
+    <div class="section"><h3>我的 Key</h3>
+      <table><tr><th>Key</th><th>备注</th><th>配额</th><th>状态</th><th>创建时间</th><th></th></tr>
+      ${rows || "<tr><td colspan=6>暂无</td></tr>"}</table>
+    </div>`;
+}
+
+async function createKey() {
+  try {
+    const k = await req("/api/keys", {
+      method: "POST",
+      body: JSON.stringify({ name: $("#k-name").value, quotaTokens: $("#k-quota").value ? Number($("#k-quota").value) : null }),
+    });
+    $("#new-key").textContent = `新 Key（只显示一次，请保存）：${k.key}`;
+    renderKeys($("#content"));
+    setTimeout(() => { $("#new-key").textContent = `新 Key（只显示一次，请保存）：${k.key}`; }, 50);
+  } catch (e) { alert(e.message); }
+}
+async function revokeKey(id) {
+  await req(`/api/keys/${id}`, { method: "DELETE", headers: {} });
+  renderTab();
+}
+
+async function renderUsers(c) {
+  const { users } = await req("/api/users");
+  const rows = users.map((u) =>
+    `<tr><td>${u.name}</td><td>${u.email}</td><td><span class="tag">${u.role}</span></td>
+     <td>${new Date(u.created_at).toLocaleString("zh-CN")}</td></tr>`).join("");
+  c.innerHTML = `
+    <div class="section"><h3>创建成员</h3>
+      <div class="row">
+        <input id="u-name" placeholder="姓名" />
+        <input id="u-email" placeholder="邮箱" />
+        <input id="u-pw" placeholder="初始密码" />
+        <button onclick="addUser()">创建</button>
+      </div>
+    </div>
+    <div class="section"><h3>成员列表</h3>
+      <table><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>创建时间</th></tr>${rows}</table>
+    </div>`;
+}
+
+async function addUser() {
+  try {
+    await req("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({ name: $("#u-name").value, email: $("#u-email").value, password: $("#u-pw").value }),
+    });
+    renderTab();
+  } catch (e) { alert(e.message); }
+}
+
+async function renderRepos(c) {
+  const { repos } = await req("/api/repos");
+  const base = location.origin;
+  const rows = repos.map((r) => `
+    <tr>
+      <td><b>${r.group}/${r.name}</b></td>
+      <td>${new Date(r.createdAt).toLocaleString("zh-CN")}</td>
+      <td class="mono">${base}/git/${r.group}/${r.name}.git</td>
+      <td><button class="sm danger" onclick="delRepo('${r.id}')">删除</button></td>
+    </tr>`).join("");
+  c.innerHTML = `
+    <div class="section"><h3>新建仓库</h3>
+      <div class="row">
+        <input id="r-group" placeholder="分组" value="default" />
+        <input id="r-name" placeholder="仓库名" />
+        <button onclick="addRepo()">创建</button>
+      </div>
+      <div class="hint">克隆时需带凭证：http://&lt;邮箱&gt;:&lt;token&gt;@主机/git/&lt;分组&gt;/&lt;仓库名&gt;.git</div>
+    </div>
+    <div class="section"><h3>仓库列表</h3>
+      <table><tr><th>仓库</th><th>创建时间</th><th>地址</th><th></th></tr>
+      ${rows || "<tr><td colspan=4>暂无仓库</td></tr>"}</table>
+    </div>`;
+}
+
+async function addRepo() {
+  try {
+    await req("/api/repos", { method: "POST", body: JSON.stringify({ group: $("#r-group").value, name: $("#r-name").value }) });
+    renderTab();
+  } catch (e) { alert(e.message); }
+}
+async function delRepo(id) {
+  if (!confirm("删除仓库？磁盘数据将一并删除")) return;
+  await req(`/api/repos/${id}`, { method: "DELETE" });
+  renderTab();
+}
+
+if (token) {
+  fetch("/api/me", { headers: { authorization: `Bearer ${token}` } })
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((u) => { me = u; renderMain(); })
+    .catch(() => renderLogin());
+} else {
+  renderLogin();
+}
+</script>
+</body>
+</html>
