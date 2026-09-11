@@ -2,11 +2,13 @@ import { ipcMain, dialog } from "electron";
 import { detectClis } from "./headlessManager.js";
 import { listModelRoutes } from "./modelRegistry.js";
 import { cloneRepo } from "./gitWorkspace.js";
+import { ImClient } from "./imClient.js";
 import {
   checkServerHealth,
   chatStream,
   createRepo,
   deleteRepo,
+  getConnection,
   gitRemoteUrl,
   listModels,
   listRepos,
@@ -49,6 +51,16 @@ export function registerIpcHandlers() {
     (_e, input: { title?: string; cli?: string; taskId?: string; messages: unknown[] }) =>
       saveSession(input),
   );
+
+  ipcMain.handle("im:connect", (event) => {
+    const conn = getConnection();
+    const client = new ImClient();
+    client.connect(conn.baseUrl, conn.token ?? "", (ev) => {
+      if (!event.sender.isDestroyed()) event.sender.send("im:event", ev);
+    });
+    event.sender.once("destroyed", () => client.disconnect());
+    return true;
+  });
 
   ipcMain.handle(
     "chat:send",

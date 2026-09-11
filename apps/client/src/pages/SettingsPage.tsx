@@ -36,6 +36,39 @@ export default function SettingsPage() {
         <Button onClick={logout}>退出登录</Button>
       </Form>
 
+      {user?.role === "admin" && (
+        <>
+          <Typography.Title level={5} style={{ marginTop: 32 }}>
+            创建成员账号
+          </Typography.Title>
+          <Form
+            layout="inline"
+            style={{ maxWidth: 720 }}
+            onFinish={async (v: { name: string; email: string; password: string }) => {
+              try {
+                await api.createUser(v.name, v.email, v.password);
+                message.success(`成员「${v.name}」已创建`);
+              } catch (err) {
+                message.error(err instanceof Error ? err.message : "创建失败");
+              }
+            }}
+          >
+            <Form.Item name="name" rules={[{ required: true, message: "姓名" }]}>
+              <Input placeholder="姓名" />
+            </Form.Item>
+            <Form.Item name="email" rules={[{ required: true, message: "邮箱" }]}>
+              <Input placeholder="邮箱" />
+            </Form.Item>
+            <Form.Item name="password" rules={[{ required: true, message: "密码" }]}>
+              <Input.Password placeholder="初始密码" />
+            </Form.Item>
+            <Button type="primary" htmlType="submit">
+              创建
+            </Button>
+          </Form>
+        </>
+      )}
+
       <Typography.Title level={5} style={{ marginTop: 32 }}>
         AI CLI 检测
       </Typography.Title>

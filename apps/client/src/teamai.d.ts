@@ -47,6 +47,8 @@ export interface TeamAiApi {
     taskId?: string;
     messages: unknown[];
   }): Promise<string>;
+  imConnect(): Promise<boolean>;
+  onImEvent(handler: (event: unknown) => void): () => void;
   chatSend(
     requestId: string,
     model: string,

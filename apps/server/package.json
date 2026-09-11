@@ -8,10 +8,12 @@
     "start": "tsx src/index.ts",
     "test:e2e": "node scripts/e2e.mjs",
     "test:e2e:git": "node scripts/e2e-git.mjs",
+    "test:e2e:im": "node scripts/e2e-im.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
     "@fastify/websocket": "^11.0.2",
     "@teamai/shared": "workspace:*",
     "fastify": "^5.1.0"
@@ -20,6 +22,7 @@
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "ws": "^8.18.0"
   }
 }

@@ -68,6 +68,40 @@ CREATE TABLE IF NOT EXISTS sessions (
   meta_json TEXT NOT NULL DEFAULT '{}',
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS channels (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  owner_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS channel_members (
+  channel_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  last_read_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (channel_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  sender_user_id TEXT,
+  sender_role_id TEXT,
+  type TEXT NOT NULL DEFAULT 'text',
+  content TEXT NOT NULL,
+  payload_json TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_msg_channel ON messages(channel_id, created_at);
+CREATE TABLE IF NOT EXISTS ai_roles (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  persona_prompt TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL,
+  trigger_kind TEXT NOT NULL DEFAULT 'mention',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(config: ServerConfig): Db {

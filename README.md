@@ -30,6 +30,7 @@ pnpm typecheck    # 全仓类型检查
 pnpm build        # 全仓构建
 pnpm --filter @teamai/server test:e2e       # 网关/认证/用量端到端测试（15 项）
 pnpm --filter @teamai/server test:e2e:git   # Git 托管端到端测试（9 项，含真实 clone/push）
+pnpm --filter @teamai/server test:e2e:im    # IM 端到端测试（15 项，含 WS 广播与 AI 角色）
 ```
 
 浏览器预览模式：`pnpm dev:server` 后再起 `pnpm --filter @teamai/client exec vite`，访问 http://localhost:5173 可直接登录使用（Vite 代理转发到服务端）；Git 克隆、CLI 检测等本地能力仅在 Electron 中可用。

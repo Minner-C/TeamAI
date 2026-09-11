@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Layout, Menu } from "antd";
 import {
   RobotOutlined,
@@ -7,7 +6,7 @@ import {
   BarChartOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { useAppStore } from "./store/appStore";
+import { useAppStore, type PageKey } from "./store/appStore";
 import LoginPage from "./pages/LoginPage";
 import AgentPage from "./pages/AgentPage";
 import ImPage from "./pages/ImPage";
@@ -16,8 +15,6 @@ import UsagePage from "./pages/UsagePage";
 import SettingsPage from "./pages/SettingsPage";
 
 const { Sider, Content } = Layout;
-
-type PageKey = "agent" | "im" | "repos" | "usage" | "settings";
 
 const PAGES: Record<PageKey, React.ReactNode> = {
   agent: <AgentPage />,
@@ -28,8 +25,7 @@ const PAGES: Record<PageKey, React.ReactNode> = {
 };
 
 export default function App() {
-  const [page, setPage] = useState<PageKey>("agent");
-  const token = useAppStore((s) => s.token);
+  const { page, setPage, token } = useAppStore();
 
   if (!token) return <LoginPage />;
 

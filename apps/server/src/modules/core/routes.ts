@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { verifyPassword, signToken } from "./crypto.js";
-import { requireUser } from "./auth.js";
+import { hashPassword, randomId, verifyPassword, signToken } from "./crypto.js";
+import { requireAdmin, requireUser } from "./auth.js";
 import type { UserRow } from "../../types.js";
 
 const TOKEN_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -27,5 +27,26 @@ export async function coreRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: requireUser }, async (req) => {
     const u = req.user!;
     return { id: u.id, name: u.name, email: u.email, role: u.role };
+  });
+
+  app.get("/users", { preHandler: requireUser }, async () => {
+    const rows = app.db
+      .prepare("SELECT id, name, email, role, created_at FROM users ORDER BY created_at ASC")
+      .all() as unknown as Array<Pick<UserRow, "id" | "name" | "email" | "role" | "created_at">>;
+    return { users: rows };
+  });
+
+  app.post("/admin/users", { preHandler: requireAdmin }, async (req, reply) => {
+    const body = req.body as { name?: string; email?: string; password?: string } | undefined;
+    if (!body?.name || !body.email || !body.password) {
+      return reply.code(400).send({ error: "name, email, password required" });
+    }
+    const exists = app.db.prepare("SELECT id FROM users WHERE email = ?").get(body.email);
+    if (exists) return reply.code(409).send({ error: "email already exists" });
+    const id = randomId();
+    app.db
+      .prepare("INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, 'member', ?)")
+      .run(id, body.name, body.email, hashPassword(body.password), Date.now());
+    return reply.code(201).send({ id, name: body.name, email: body.email, role: "member" });
   });
 }

@@ -26,6 +26,12 @@ const api = {
     ipcRenderer.invoke("git:clone", repoUrl, targetDir),
   saveSession: (input: { title?: string; cli?: string; taskId?: string; messages: unknown[] }) =>
     ipcRenderer.invoke("sessions:save", input),
+  imConnect: () => ipcRenderer.invoke("im:connect"),
+  onImEvent: (handler: (event: unknown) => void) => {
+    const listener = (_e: IpcRendererEvent, ev: unknown) => handler(ev);
+    ipcRenderer.on("im:event", listener);
+    return () => ipcRenderer.removeListener("im:event", listener);
+  },
   chatSend: (requestId: string, model: string, messages: Array<{ role: string; content: string }>) =>
     ipcRenderer.invoke("chat:send", { requestId, model, messages }),
   onChatChunk: (handler: (chunk: ChatChunk) => void) => {

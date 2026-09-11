@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Input, Select, Space, Tag, Typography, message } from "antd";
 import { api } from "../api";
+import { useAppStore } from "../store/appStore";
 
 interface ChatItem {
   role: "user" | "assistant";
@@ -16,6 +17,15 @@ export default function AgentPage() {
   const [sending, setSending] = useState(false);
   const requestIdRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { agentDraft, clearAgentDraft } = useAppStore();
+
+  useEffect(() => {
+    if (agentDraft) {
+      setInput(agentDraft);
+      clearAgentDraft();
+      message.success("已把消息填入输入框，可直接发送给 AI");
+    }
+  }, [agentDraft, clearAgentDraft]);
 
   useEffect(() => {
     api
