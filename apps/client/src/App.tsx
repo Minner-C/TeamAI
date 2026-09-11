@@ -7,6 +7,8 @@ import {
   BarChartOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
+import { useAppStore } from "./store/appStore";
+import LoginPage from "./pages/LoginPage";
 import AgentPage from "./pages/AgentPage";
 import ImPage from "./pages/ImPage";
 import ReposPage from "./pages/ReposPage";
@@ -27,6 +29,9 @@ const PAGES: Record<PageKey, React.ReactNode> = {
 
 export default function App() {
   const [page, setPage] = useState<PageKey>("agent");
+  const token = useAppStore((s) => s.token);
+
+  if (!token) return <LoginPage />;
 
   return (
     <Layout className="app-shell">

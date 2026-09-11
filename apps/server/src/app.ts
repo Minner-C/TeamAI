@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import type { ServerConfig } from "./config.js";
+import { openDb } from "./db.js";
 import { coreRoutes } from "./modules/core/routes.js";
 import { gatewayRoutes } from "./modules/gateway/routes.js";
 import { usageRoutes } from "./modules/usage/routes.js";
@@ -11,6 +12,9 @@ import { imWs } from "./modules/im/ws.js";
 
 export async function buildApp(config: ServerConfig) {
   const app = Fastify({ logger: true });
+
+  app.decorate("config", config);
+  app.decorate("db", openDb(config));
 
   await app.register(websocket);
 

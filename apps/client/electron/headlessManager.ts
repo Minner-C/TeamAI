@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import type { CliKind, CliChannel } from "@teamai/shared";
 
 export interface CliInfo {
@@ -16,6 +17,26 @@ const CLI_TABLE: Array<Omit<CliInfo, "installed" | "version">> = [
   { kind: "qwen", channel: "headless-stream-json", command: "qwen" },
 ];
 
+function probe(command: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      command,
+      ["--version"],
+      { timeout: 8000, shell: process.platform === "win32" },
+      (err, stdout, stderr) => {
+        if (err) return resolve(null);
+        resolve((stdout || stderr).trim().split("\n")[0] || "unknown");
+      },
+    );
+    child.on("error", () => resolve(null));
+  });
+}
+
 export async function detectClis(): Promise<CliInfo[]> {
-  return CLI_TABLE.map((c) => ({ ...c, installed: false, version: null }));
+  return Promise.all(
+    CLI_TABLE.map(async (c) => {
+      const version = await probe(c.command);
+      return { ...c, installed: version !== null, version };
+    }),
+  );
 }

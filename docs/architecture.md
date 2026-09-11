@@ -219,8 +219,8 @@ ai_roles(id, name, persona_prompt, model, trigger, channel_id, enabled)
 
 ## 7. 实施路线图
 
-- **Phase 0（本次交付）**：架构文档 + monorepo 脚手架，服务端可启动（健康检查 + 模块目录 + 协议类型），客户端可启动（Electron 壳 + 页面框架）。
-- **Phase 1**：服务端 core/auth + gateway（Anthropic/OpenAI 兼容 + 计量）+ usage；客户端登录 + modelRegistry + Claude/Kimi 两个 CLI 适配跑通"选模型→网关→出字"链路。
+- **Phase 0（已完成）**：架构文档 + monorepo 脚手架，服务端可启动（健康检查 + 模块目录 + 协议类型），客户端可启动（Electron 壳 + 页面框架）。
+- **Phase 1（已完成核心链路）**：服务端 core/auth（scrypt 密码 + HMAC token）+ gateway（OpenAI/Anthropic 兼容转发、SSE 流式透传、跨协议非流式转换、usage 落库）+ usage（聚合/明细 API）+ 虚拟 Key（签发/吊销/配额限流），15 项 e2e 测试全过（`pnpm --filter @teamai/server test:e2e`）；客户端登录 + Agent 页聊天（模型选择 → 网关 → 流式出字）+ CLI 检测 + Claude headless 适配器骨架。待补：Kimi ACP 长连接适配、Claude 权限提示协议接入。
 - **Phase 2**：Git 托管 + 客户端项目/Git 视图 + 会话存档同步。
 - **Phase 3**：IM（单聊/群组/历史/已读）+「喂给 AI」+ AI 角色引擎。
 - **Phase 4**：在线环境（容器沙箱）、Web 端、审计与报表完善、macOS 打包。

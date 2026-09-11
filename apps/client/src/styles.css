@@ -29,3 +29,62 @@ body,
   padding: 24px;
   min-height: 100%;
 }
+
+.login-wrap {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f2f5;
+}
+
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 32px);
+}
+
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.chat-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chat-role {
+  flex: 0 0 32px;
+  font-weight: 600;
+  color: #666;
+}
+
+.chat-bubble {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.chat-user .chat-bubble {
+  background: #e6f4ff;
+}
+
+.chat-cursor {
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}

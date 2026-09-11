@@ -28,7 +28,10 @@ pnpm dev:client   # 客户端（vite + electron 开发模式）
 
 pnpm typecheck    # 全仓类型检查
 pnpm build        # 全仓构建
+pnpm --filter @teamai/server test:e2e   # 服务端端到端测试（mock 上游，15 项）
 ```
+
+首次启动服务端会自动创建管理员账号（默认 `admin@teamai.local` / `admin123`，可用下方环境变量覆盖）。
 
 ## 环境变量（服务端）
 
@@ -37,4 +40,6 @@ pnpm build        # 全仓构建
 | `TEAMAI_PORT` | `8787` | 监听端口 |
 | `TEAMAI_DATA_DIR` | `apps/server/data` | 数据目录 |
 | `TEAMAI_REPOS_DIR` | `$TEAMAI_DATA_DIR/repos` | bare 仓库目录 |
-| `TEAMAI_JWT_SECRET` | dev-only | 生产必须覆盖 |
+| `TEAMAI_JWT_SECRET` | dev-only | 生产必须覆盖（同时用于 Key 加密） |
+| `TEAMAI_ADMIN_EMAIL` | `admin@teamai.local` | 初始管理员邮箱 |
+| `TEAMAI_ADMIN_PASSWORD` | `admin123` | 初始管理员密码 |
