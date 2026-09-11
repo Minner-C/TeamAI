@@ -67,6 +67,20 @@ export default function AgentPage() {
     await api.chatSend(`req-${requestIdRef.current}`, model, history);
   }
 
+  async function saveSession() {
+    if (items.length === 0) return;
+    try {
+      await api.saveSession({
+        title: items[0]?.content.slice(0, 40) || "未命名会话",
+        cli: "teamai-client",
+        messages: items.map(({ role, content }) => ({ role, content })),
+      });
+      message.success("会话已存档到服务端");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "保存失败");
+    }
+  }
+
   return (
     <div className="page-card chat-page">
       <Space style={{ marginBottom: 12 }} wrap>
@@ -85,6 +99,9 @@ export default function AgentPage() {
           notFoundContent="服务端尚未配置 provider"
         />
         {sending && <Tag color="processing">生成中…</Tag>}
+        <Button size="small" onClick={saveSession} disabled={items.length === 0 || sending}>
+          保存会话
+        </Button>
       </Space>
 
       <div className="chat-history">

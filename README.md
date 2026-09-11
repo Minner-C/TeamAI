@@ -28,8 +28,13 @@ pnpm dev:client   # 客户端（vite + electron 开发模式）
 
 pnpm typecheck    # 全仓类型检查
 pnpm build        # 全仓构建
-pnpm --filter @teamai/server test:e2e   # 服务端端到端测试（mock 上游，15 项）
+pnpm --filter @teamai/server test:e2e       # 网关/认证/用量端到端测试（15 项）
+pnpm --filter @teamai/server test:e2e:git   # Git 托管端到端测试（9 项，含真实 clone/push）
 ```
+
+浏览器预览模式：`pnpm dev:server` 后再起 `pnpm --filter @teamai/client exec vite`，访问 http://localhost:5173 可直接登录使用（Vite 代理转发到服务端）；Git 克隆、CLI 检测等本地能力仅在 Electron 中可用。
+
+Git 远程地址格式：`http://<邮箱>:<token>@服务器:8787/git/<分组>/<仓库名>.git`（客户端「项目仓库」页可复制完整克隆命令）。
 
 首次启动服务端会自动创建管理员账号（默认 `admin@teamai.local` / `admin123`，可用下方环境变量覆盖）。
 

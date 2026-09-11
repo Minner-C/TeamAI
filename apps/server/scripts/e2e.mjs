@@ -4,8 +4,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const UPSTREAM_PORT = 8898;
-const SERVER_PORT = 8899;
+function freePort() {
+  return new Promise((resolve) => {
+    const s = http.createServer();
+    s.listen(0, () => {
+      const p = s.address().port;
+      s.close(() => resolve(p));
+    });
+  });
+}
+
+const UPSTREAM_PORT = await freePort();
+const SERVER_PORT = await freePort();
 const BASE = `http://localhost:${SERVER_PORT}`;
 
 let failed = 0;

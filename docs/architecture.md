@@ -221,7 +221,7 @@ ai_roles(id, name, persona_prompt, model, trigger, channel_id, enabled)
 
 - **Phase 0（已完成）**：架构文档 + monorepo 脚手架，服务端可启动（健康检查 + 模块目录 + 协议类型），客户端可启动（Electron 壳 + 页面框架）。
 - **Phase 1（已完成核心链路）**：服务端 core/auth（scrypt 密码 + HMAC token）+ gateway（OpenAI/Anthropic 兼容转发、SSE 流式透传、跨协议非流式转换、usage 落库）+ usage（聚合/明细 API）+ 虚拟 Key（签发/吊销/配额限流），15 项 e2e 测试全过（`pnpm --filter @teamai/server test:e2e`）；客户端登录 + Agent 页聊天（模型选择 → 网关 → 流式出字）+ CLI 检测 + Claude headless 适配器骨架。待补：Kimi ACP 长连接适配、Claude 权限提示协议接入。
-- **Phase 2**：Git 托管 + 客户端项目/Git 视图 + 会话存档同步。
+- **Phase 2（已完成核心）**：Git 托管落地——bare 仓库创建/删除、smart HTTP（`git http-backend` CGI 桥接 + Basic/Bearer 鉴权 + 路径防穿越）、commits/tree 浏览 API，9 项 e2e 全过（`pnpm --filter @teamai/server test:e2e:git`，含真实 clone/push）；客户端「项目仓库」页（列表/新建/克隆/复制地址/提交历史抽屉）；会话存档 API + Agent 页「保存会话」按钮。待补：仓库级成员权限（当前所有登录用户可读写全部仓库）、分支管理 UI。
 - **Phase 3**：IM（单聊/群组/历史/已读）+「喂给 AI」+ AI 角色引擎。
 - **Phase 4**：在线环境（容器沙箱）、Web 端、审计与报表完善、macOS 打包。
 

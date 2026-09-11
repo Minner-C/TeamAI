@@ -116,6 +116,74 @@ export async function usageSummary(): Promise<UsageSummary> {
   return (await res.json()) as UsageSummary;
 }
 
+export interface RepoView {
+  id: string;
+  name: string;
+  group: string;
+  ownerId: string;
+  createdAt: number;
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(`${connection.baseUrl}${path}`, {
+    ...init,
+    headers: {
+      authorization: `Bearer ${connection.token ?? ""}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${text}`);
+  }
+  return res;
+}
+
+export async function listRepos(): Promise<RepoView[]> {
+  const res = await apiFetch("/api/repos");
+  return ((await res.json()) as { repos: RepoView[] }).repos;
+}
+
+export async function createRepo(name: string, group: string): Promise<RepoView> {
+  const res = await apiFetch("/api/repos", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, group }),
+  });
+  return (await res.json()) as RepoView;
+}
+
+export async function deleteRepo(id: string): Promise<void> {
+  await apiFetch(`/api/repos/${id}`, { method: "DELETE" });
+}
+
+export async function repoCommits(id: string) {
+  const res = await apiFetch(`/api/repos/${id}/commits`);
+  return ((await res.json()) as { commits: Array<{ hash: string; author: string; at: number; message: string }> }).commits;
+}
+
+export async function saveSession(input: {
+  title?: string;
+  cli?: string;
+  taskId?: string;
+  messages: unknown[];
+}): Promise<string> {
+  const res = await apiFetch("/api/sessions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return ((await res.json()) as { id: string }).id;
+}
+
+export function gitRemoteUrl(group: string, name: string, email: string): string {
+  const u = new URL(connection.baseUrl);
+  u.username = encodeURIComponent(email);
+  u.password = encodeURIComponent(connection.token ?? "");
+  u.pathname = `/git/${group}/${name}.git`;
+  return u.toString();
+}
+
 export async function checkServerHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${connection.baseUrl}/health`);

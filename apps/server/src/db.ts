@@ -49,6 +49,25 @@ CREATE TABLE IF NOT EXISTS usage_records (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_records(user_id, ts);
 CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_records(model);
+CREATE TABLE IF NOT EXISTS repos (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  grp TEXT NOT NULL DEFAULT 'default',
+  owner_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(grp, name)
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  task_id TEXT NOT NULL DEFAULT '',
+  cli TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  archive_path TEXT NOT NULL,
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(config: ServerConfig): Db {

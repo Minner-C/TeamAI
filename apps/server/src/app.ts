@@ -7,6 +7,7 @@ import { gatewayRoutes } from "./modules/gateway/routes.js";
 import { usageRoutes } from "./modules/usage/routes.js";
 import { storageRoutes } from "./modules/storage/routes.js";
 import { gitRoutes } from "./modules/git/routes.js";
+import { gitSmartHttp } from "./modules/git/smartHttp.js";
 import { imRoutes } from "./modules/im/routes.js";
 import { imWs } from "./modules/im/ws.js";
 
@@ -24,6 +25,7 @@ export async function buildApp(config: ServerConfig) {
   await app.register(gatewayRoutes);
   await app.register(usageRoutes, { prefix: "/api/usage" });
   await app.register(storageRoutes, { prefix: "/api" });
+  await app.register(gitSmartHttp);
   await app.register(gitRoutes, { prefix: "/api/repos" });
   await app.register(imRoutes, { prefix: "/api" });
   await app.register(imWs);

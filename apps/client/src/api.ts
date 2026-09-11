@@ -7,6 +7,14 @@ export interface SessionUser {
   role: string;
 }
 
+export interface RepoView {
+  id: string;
+  name: string;
+  group: string;
+  ownerId: string;
+  createdAt: number;
+}
+
 const isElectron = typeof window !== "undefined" && !!window.teamai;
 
 let directToken = localStorage.getItem("teamai_token") ?? "";
@@ -97,6 +105,64 @@ export const api = {
   async detectClis() {
     if (isElectron) return window.teamai.detectClis();
     return [] as Array<{ kind: string; channel: string; command: string; installed: boolean; version: string | null }>;
+  },
+
+  async listRepos() {
+    if (isElectron) return window.teamai.listRepos();
+    const res = await directFetch("/api/repos");
+    if (!res.ok) throw new Error(`获取仓库列表失败：${res.status}`);
+    return ((await res.json()) as { repos: RepoView[] }).repos;
+  },
+
+  async createRepo(name: string, group: string) {
+    if (isElectron) return window.teamai.createRepo(name, group);
+    const res = await directFetch("/api/repos", {
+      method: "POST",
+      body: JSON.stringify({ name, group }),
+    });
+    if (!res.ok) throw new Error(`创建仓库失败：${await res.text()}`);
+    return (await res.json()) as RepoView;
+  },
+
+  async deleteRepo(id: string) {
+    if (isElectron) return window.teamai.deleteRepo(id);
+    const res = await directFetch(`/api/repos/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`删除失败：${res.status}`);
+  },
+
+  async repoCommits(id: string) {
+    if (isElectron) return window.teamai.repoCommits(id);
+    const res = await directFetch(`/api/repos/${id}/commits`);
+    if (!res.ok) throw new Error(`获取提交历史失败：${res.status}`);
+    return ((await res.json()) as {
+      commits: Array<{ hash: string; author: string; at: number; message: string }>;
+    }).commits;
+  },
+
+  repoRemoteUrl(group: string, name: string, email: string): Promise<string> {
+    if (isElectron) return window.teamai.repoRemoteUrl(group, name, email);
+    const u = new URL(window.location.origin);
+    u.username = encodeURIComponent(email);
+    u.password = encodeURIComponent(directToken);
+    u.pathname = `/git/${group}/${name}.git`;
+    return Promise.resolve(u.toString());
+  },
+
+  async pickDir(): Promise<string | null> {
+    if (isElectron) return window.teamai.pickDir();
+    return null;
+  },
+
+  async gitClone(repoUrl: string, targetDir: string): Promise<void> {
+    if (isElectron) return window.teamai.gitClone(repoUrl, targetDir);
+    throw new Error("浏览器模式不支持 clone，请复制仓库地址在本地终端操作");
+  },
+
+  async saveSession(input: { title?: string; cli?: string; taskId?: string; messages: unknown[] }) {
+    if (isElectron) return window.teamai.saveSession(input);
+    const res = await directFetch("/api/sessions", { method: "POST", body: JSON.stringify(input) });
+    if (!res.ok) throw new Error(`保存会话失败：${res.status}`);
+    return ((await res.json()) as { id: string }).id;
   },
 
   async chatSend(
