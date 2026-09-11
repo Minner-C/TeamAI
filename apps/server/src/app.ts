@@ -1,6 +1,9 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import cors from "@fastify/cors";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { coreRoutes } from "./modules/core/routes.js";
@@ -31,6 +34,13 @@ export async function buildApp(config: ServerConfig) {
   await app.register(websocket);
 
   app.get("/health", async () => ({ ok: true, service: "teamai-server", ts: Date.now() }));
+
+  const adminHtml = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/admin.html");
+  app.get("/", async (_req, reply) => reply.redirect("/admin"));
+  app.get("/admin", async (_req, reply) => {
+    reply.type("text/html; charset=utf-8");
+    return reply.send(fs.createReadStream(adminHtml));
+  });
 
   await app.register(coreRoutes, { prefix: "/api" });
   await app.register(gatewayRoutes);

@@ -88,6 +88,7 @@ async function doLogin() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "登录失败");
+    if (data.user?.role !== "admin") throw new Error("该账号不是管理员，无法进入控制台");
     token = data.token;
     me = data.user;
     localStorage.setItem("teamai_admin_token", token);
@@ -208,7 +209,7 @@ async function delProvider(id) {
 }
 
 async function renderKeys(c) {
-  const { keys } = await req("/api/keys");
+  const { keys } = await req("/api/admin/keys");
   const rows = keys.map((k) => `
     <tr>
       <td class="mono">${k.key.slice(0, 12)}…</td>
