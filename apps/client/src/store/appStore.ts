@@ -1,11 +1,5 @@
 import { create } from "zustand";
-
-export interface SessionUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
+import { api, type SessionUser } from "../api";
 
 interface AppState {
   serverUrl: string;
@@ -16,11 +10,16 @@ interface AppState {
   logout: () => void;
 }
 
+const restored = api.restoreSession();
+
 export const useAppStore = create<AppState>((set) => ({
   serverUrl: "http://localhost:8787",
-  token: null,
-  user: null,
+  token: restored?.token ?? null,
+  user: restored?.user ?? null,
   setServerUrl: (serverUrl) => set({ serverUrl }),
   setAuth: (token, user) => set({ token, user }),
-  logout: () => set({ token: null, user: null }),
+  logout: () => {
+    api.clearSession();
+    set({ token: null, user: null });
+  },
 }));

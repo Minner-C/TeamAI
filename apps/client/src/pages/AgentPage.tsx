@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Input, Select, Space, Tag, Typography, message } from "antd";
+import { api } from "../api";
 
 interface ChatItem {
   role: "user" | "assistant";
@@ -17,7 +18,7 @@ export default function AgentPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    window.teamai
+    api
       .listModels()
       .then((list) => {
         setModels(list);
@@ -27,7 +28,7 @@ export default function AgentPage() {
   }, []);
 
   useEffect(() => {
-    const off = window.teamai.onChatChunk((chunk) => {
+    const off = api.onChatChunk((chunk) => {
       setItems((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -63,7 +64,7 @@ export default function AgentPage() {
     ];
     setItems([...history, { role: "assistant", content: "", streaming: true }]);
     requestIdRef.current += 1;
-    await window.teamai.chatSend(`req-${requestIdRef.current}`, model, history);
+    await api.chatSend(`req-${requestIdRef.current}`, model, history);
   }
 
   return (

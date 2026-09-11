@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Typography, Form, Input, Button, Table, Tag, message } from "antd";
 import { useAppStore } from "../store/appStore";
+import { api } from "../api";
 
 interface CliRow {
   kind: string;
@@ -15,7 +16,8 @@ export default function SettingsPage() {
   const [clis, setClis] = useState<CliRow[]>([]);
 
   useEffect(() => {
-    window.teamai
+    if (!api.isElectron) return;
+    api
       .detectClis()
       .then(setClis)
       .catch((err) => message.error(`CLI 检测失败：${err.message}`));

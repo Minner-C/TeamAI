@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Statistic, Table, Typography, message, Row, Col, Card } from "antd";
+import { api } from "../api";
 
 interface Summary {
   totalTokensIn: number;
@@ -13,7 +14,7 @@ export default function UsagePage() {
   const [data, setData] = useState<Summary | null>(null);
 
   useEffect(() => {
-    window.teamai
+    api
       .usageSummary()
       .then(setData)
       .catch((err) => message.error(`获取用量失败：${err.message}`));
