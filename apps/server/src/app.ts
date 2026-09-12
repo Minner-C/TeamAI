@@ -14,6 +14,9 @@ import { gitRoutes } from "./modules/git/routes.js";
 import { gitSmartHttp } from "./modules/git/smartHttp.js";
 import { imRoutes } from "./modules/im/routes.js";
 import { imWs } from "./modules/im/ws.js";
+import { envRoutes } from "./modules/envs/routes.js";
+import { auditRoutes } from "./modules/audit/routes.js";
+import { reconcileOnBoot } from "./modules/envs/runner.js";
 
 export async function buildApp(config: ServerConfig) {
   const app = Fastify({ logger: true });
@@ -50,6 +53,10 @@ export async function buildApp(config: ServerConfig) {
   await app.register(gitRoutes, { prefix: "/api/repos" });
   await app.register(imRoutes, { prefix: "/api" });
   await app.register(imWs);
+  await app.register(envRoutes, { prefix: "/api/envs" });
+  await app.register(auditRoutes, { prefix: "/api/admin/audit" });
+
+  reconcileOnBoot(app.db);
 
   app.log.info({ reposDir: config.reposDir }, "repos dir");
 

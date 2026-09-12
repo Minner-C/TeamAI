@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import type { ProviderRow } from "../../types.js";
 import { findProviderForModel, providerApiKey } from "./store.js";
 import { insertUsage } from "../usage/store.js";
+import { recordAudit } from "../audit/store.js";
 import {
   anthropicResponseToOpenai,
   anthropicToOpenai,
@@ -249,6 +250,14 @@ export async function gatewayRoutes(app: FastifyInstance) {
       apiKey: body.apiKey,
       models: body.models ?? [],
     });
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "provider.create",
+      target: body.name,
+      detail: `${body.type} ${body.baseUrl} models=${(body.models ?? []).join(",")}`,
+      ip: req.ip,
+    });
     return view;
   });
 
@@ -259,12 +268,26 @@ export async function gatewayRoutes(app: FastifyInstance) {
     if (!store.setProviderEnabled(app.db, id, body.enabled)) {
       return reply.code(404).send({ error: "provider not found" });
     }
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: body.enabled ? "provider.enable" : "provider.disable",
+      target: id,
+      ip: req.ip,
+    });
     return { ok: true };
   });
 
   app.delete("/api/admin/providers/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!store.deleteProvider(app.db, id)) return reply.code(404).send({ error: "not found" });
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "provider.delete",
+      target: id,
+      ip: req.ip,
+    });
     return { ok: true };
   });
 
@@ -278,6 +301,14 @@ export async function gatewayRoutes(app: FastifyInstance) {
       userId: req.user!.id,
       name: body?.name,
       quotaTokens: body?.quotaTokens ?? null,
+    });
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "key.create",
+      target: body?.name ?? "",
+      detail: body?.quotaTokens != null ? `quota=${body.quotaTokens}` : "no-quota",
+      ip: req.ip,
     });
     return reply.code(201).send(row);
   });
@@ -295,6 +326,13 @@ export async function gatewayRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: "not found" });
     }
     store.revokeVirtualKey(app.db, id);
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "key.revoke",
+      target: row.name || id,
+      ip: req.ip,
+    });
     return { ok: true };
   });
 }

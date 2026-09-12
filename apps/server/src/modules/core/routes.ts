@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { hashPassword, randomId, verifyPassword, signToken } from "./crypto.js";
 import { requireAdmin, requireUser } from "./auth.js";
+import { recordAudit } from "../audit/store.js";
 import type { UserRow } from "../../types.js";
 
 const TOKEN_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -15,9 +16,11 @@ export async function coreRoutes(app: FastifyInstance) {
       .prepare("SELECT * FROM users WHERE email = ?")
       .get(body.email) as UserRow | undefined;
     if (!user || !verifyPassword(body.password, user.password_hash)) {
+      recordAudit(app.db, { action: "auth.login_failed", target: body.email, ip: req.ip });
       return reply.code(401).send({ error: "invalid credentials" });
     }
     const token = signToken({ uid: user.id, exp: Date.now() + TOKEN_TTL_MS }, app.config.jwtSecret);
+    recordAudit(app.db, { userId: user.id, userEmail: user.email, action: "auth.login", ip: req.ip });
     return {
       token,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
@@ -47,6 +50,14 @@ export async function coreRoutes(app: FastifyInstance) {
     app.db
       .prepare("INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, 'member', ?)")
       .run(id, body.name, body.email, hashPassword(body.password), Date.now());
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "user.create",
+      target: body.email,
+      detail: body.name,
+      ip: req.ip,
+    });
     return reply.code(201).send({ id, name: body.name, email: body.email, role: "member" });
   });
 }

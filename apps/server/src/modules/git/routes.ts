@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../core/auth.js";
 import { createRepo, deleteRepo, listRepos, repoCommits, repoTree, type RepoRow } from "./store.js";
+import { recordAudit } from "../audit/store.js";
 import type { UserRow } from "../../types.js";
 
 function toView(r: RepoRow) {
@@ -21,6 +22,13 @@ export async function gitRoutes(app: FastifyInstance) {
         grp: body.group ?? "default",
         ownerId: (req.user as UserRow).id,
       });
+      recordAudit(app.db, {
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        action: "repo.create",
+        target: `${body.group ?? "default"}/${body.name}`,
+        ip: req.ip,
+      });
       return reply.code(201).send(toView(row));
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : "create failed" });
@@ -36,6 +44,13 @@ export async function gitRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: "only owner or admin can delete" });
     }
     await deleteRepo(app.db, id);
+    recordAudit(app.db, {
+      userId: user.id,
+      userEmail: user.email,
+      action: "repo.delete",
+      target: `${row.grp}/${row.name}`,
+      ip: req.ip,
+    });
     return { ok: true };
   });
 

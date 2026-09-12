@@ -223,7 +223,7 @@ ai_roles(id, name, persona_prompt, model, trigger, channel_id, enabled)
 - **Phase 1（已完成核心链路）**：服务端 core/auth（scrypt 密码 + HMAC token）+ gateway（OpenAI/Anthropic 兼容转发、SSE 流式透传、跨协议非流式转换、usage 落库）+ usage（聚合/明细 API）+ 虚拟 Key（签发/吊销/配额限流），15 项 e2e 测试全过（`pnpm --filter @teamai/server test:e2e`）；客户端登录 + Agent 页聊天（模型选择 → 网关 → 流式出字）+ CLI 检测 + Claude headless 适配器骨架。待补：Kimi ACP 长连接适配、Claude 权限提示协议接入。
 - **Phase 2（已完成核心）**：Git 托管落地——bare 仓库创建/删除、smart HTTP（`git http-backend` CGI 桥接 + Basic/Bearer 鉴权 + 路径防穿越）、commits/tree 浏览 API，9 项 e2e 全过（`pnpm --filter @teamai/server test:e2e:git`，含真实 clone/push）；客户端「项目仓库」页（列表/新建/克隆/复制地址/提交历史抽屉）；会话存档 API + Agent 页「保存会话」按钮。待补：仓库级成员权限（当前所有登录用户可读写全部仓库）、分支管理 UI。
 - **Phase 3（已完成核心）**：自研轻量 IM 落地——单聊（自动去重）/群组、REST 历史 + WebSocket 实时广播（token 认证、在线连接管理）、未读数与已读标记、消息悬停「喂给 AI」跳转 Agent 工作台；AI 角色引擎：群内 @角色名 触发 → 带人设 prompt + 最近 30 条上下文调用网关 → 以角色身份回复并广播、用量计入触发者。15 项 e2e 全过（`pnpm --filter @teamai/server test:e2e:im`，含双端 WS 实时收发）。待补：文件/图片消息、消息分页加载 UI、typing 指示 UI、关键词/自动触发模式。
-- **Phase 4**：在线环境（容器沙箱）、Web 端、审计与报表完善、macOS 打包。
+- **Phase 4（已完成核心）**：在线环境（进程级沙箱）落地——从 Git 仓库一键克隆出服务端工作区、启动命令进程管理（spawn + 进程组终止 + 退出状态自动回收 + 重启 reconciliate）、环形缓冲日志实时拉取、环境内一次性命令执行、成员只能操作自己的环境（管理员可见全部）；审计日志落地——audit_logs 表 + 登录成功/失败、建用户、Provider/Key/仓库/环境增删改全量埋点，`/api/admin/audit` 支持按动作前缀与成员过滤；服务端内置管理控制台（`/admin` 单页，零依赖）覆盖用量/Provider/虚拟 Key/成员/仓库/环境/审计七个面板。17 项 e2e 全过（`node scripts/e2e-envs.mjs`）。待补：Docker 容器级隔离（当前为进程级）、Web 端完整客户端、Windows/macOS 打包发布。
 
 ## 8. 风险与注意事项
 

@@ -102,6 +102,28 @@ CREATE TABLE IF NOT EXISTS ai_roles (
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  user_email TEXT,
+  action TEXT NOT NULL,
+  target TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  ip TEXT NOT NULL DEFAULT '',
+  ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_logs(ts);
+CREATE TABLE IF NOT EXISTS environments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  repo_id TEXT,
+  user_id TEXT NOT NULL,
+  workdir TEXT NOT NULL,
+  run_cmd TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'stopped',
+  pid INTEGER,
+  created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(config: ServerConfig): Db {

@@ -115,6 +115,8 @@ function renderMain() {
     ["keys", "虚拟 Key"],
     ["users", "成员"],
     ["repos", "Git 仓库"],
+    ["envs", "在线环境"],
+    ["audit", "审计日志"],
   ];
   $("#tabs").innerHTML = tabs.map(([k, n]) =>
     `<button class="${k === tab ? "on" : ""}" onclick="switchTab('${k}')">${n}</button>`).join("");
@@ -132,6 +134,8 @@ async function renderTab() {
     else if (tab === "keys") await renderKeys(c);
     else if (tab === "users") await renderUsers(c);
     else if (tab === "repos") await renderRepos(c);
+    else if (tab === "envs") await renderEnvs(c);
+    else if (tab === "audit") await renderAudit(c);
   } catch (e) { c.innerHTML = `<div class="err">${e.message}</div>`; }
 }
 
@@ -314,6 +318,89 @@ async function delRepo(id) {
   if (!confirm("删除仓库？磁盘数据将一并删除")) return;
   await req(`/api/repos/${id}`, { method: "DELETE" });
   renderTab();
+}
+
+async function renderEnvs(c) {
+  const [{ envs }, { repos }] = await Promise.all([req("/api/envs?all=1"), req("/api/repos")]);
+  const rows = envs.map((e) => `
+    <tr>
+      <td><b>${e.name}</b></td>
+      <td>${e.repoName || "-"}</td>
+      <td>${e.userName}</td>
+      <td class="mono">${e.runCmd || "-"}</td>
+      <td><span class="tag ${e.status === "running" ? "on" : "off"}">${e.status}</span></td>
+      <td>
+        ${e.status === "running"
+          ? `<button class="sm ghost" onclick="stopEnv('${e.id}')">停止</button>`
+          : `<button class="sm ghost" onclick="startEnv('${e.id}')">启动</button>`}
+        <button class="sm ghost" onclick="viewEnvLogs('${e.id}', '${e.name}')">日志</button>
+        <button class="sm danger" onclick="delEnv('${e.id}')">删除</button>
+      </td>
+    </tr>`).join("");
+  const repoOpts = repos.map((r) => `<option value="${r.id}">${r.group}/${r.name}</option>`).join("");
+  c.innerHTML = `
+    <div class="section"><h3>新建在线环境（从仓库克隆工作区，可运行启动命令）</h3>
+      <div class="row">
+        <input id="e-name" placeholder="环境名" />
+        <select id="e-repo"><option value="">（空工作区）</option>${repoOpts}</select>
+        <input id="e-cmd" placeholder="启动命令，如 npm run dev（可空）" style="min-width:260px" />
+        <button onclick="addEnv()">创建</button>
+      </div>
+      <div class="hint">环境是服务端上的隔离工作区进程，适合跑 dev server / 脚本任务；日志实时可查。</div>
+    </div>
+    <div class="section"><h3>环境列表</h3>
+      <table><tr><th>名称</th><th>仓库</th><th>创建者</th><th>启动命令</th><th>状态</th><th>操作</th></tr>
+      ${rows || "<tr><td colspan=6>暂无环境</td></tr>"}</table>
+    </div>
+    <div class="section" id="env-logs" style="display:none"><h3 id="env-logs-title">日志</h3>
+      <pre id="env-logs-body" style="background:#111;color:#0f0;padding:12px;border-radius:6px;max-height:320px;overflow:auto;font-size:12px"></pre>
+    </div>`;
+}
+
+async function addEnv() {
+  try {
+    await req("/api/envs", {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("#e-name").value,
+        repoId: $("#e-repo").value || undefined,
+        runCmd: $("#e-cmd").value || undefined,
+      }),
+    });
+    renderTab();
+  } catch (e) { alert(e.message); }
+}
+async function startEnv(id) { await req(`/api/envs/${id}/start`, { method: "POST" }); renderTab(); }
+async function stopEnv(id) { await req(`/api/envs/${id}/stop`, { method: "POST" }); renderTab(); }
+async function delEnv(id) {
+  if (!confirm("删除环境？工作区将被清除")) return;
+  await req(`/api/envs/${id}`, { method: "DELETE" });
+  renderTab();
+}
+async function viewEnvLogs(id, name) {
+  const box = document.querySelector("#env-logs");
+  box.style.display = "block";
+  document.querySelector("#env-logs-title").textContent = `日志：${name}`;
+  const { lines } = await req(`/api/envs/${id}/logs?tail=300`);
+  document.querySelector("#env-logs-body").textContent = lines.join("\n") || "（暂无日志）";
+}
+
+async function renderAudit(c) {
+  const { logs } = await req("/api/admin/audit?limit=200");
+  const rows = logs.map((l) => `
+    <tr>
+      <td>${new Date(l.ts).toLocaleString("zh-CN")}</td>
+      <td>${l.userEmail || "-"}</td>
+      <td><span class="tag on">${l.action}</span></td>
+      <td>${l.target || "-"}</td>
+      <td class="mono">${l.detail || "-"}</td>
+      <td class="mono">${l.ip || "-"}</td>
+    </tr>`).join("");
+  c.innerHTML = `
+    <div class="section"><h3>审计日志（最近 200 条）</h3>
+      <table><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th><th>详情</th><th>IP</th></tr>
+      ${rows || "<tr><td colspan=6>暂无日志</td></tr>"}</table>
+    </div>`;
 }
 
 if (token) {
