@@ -124,6 +124,15 @@ CREATE TABLE IF NOT EXISTS environments (
   pid INTEGER,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(config: ServerConfig): Db {

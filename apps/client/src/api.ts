@@ -23,6 +23,7 @@ export interface ImMessage {
   senderName: string;
   type: string;
   content: string;
+  payload?: { fileId?: string; name?: string; size?: number; mime?: string };
   createdAt: number;
 }
 
@@ -52,6 +53,26 @@ export type ImEvent =
   | { type: "typing"; channelId: string; userId: string }
   | { type: "error"; reason: string }
   | { type: "pong" };
+
+export interface EnvView {
+  id: string;
+  name: string;
+  repoId: string | null;
+  repoName: string | null;
+  userId: string;
+  userName: string;
+  runCmd: string;
+  status: string;
+  pid: number | null;
+  createdAt: number;
+}
+
+export interface FileInfo {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
 
 const isElectron = typeof window !== "undefined" && !!window.teamai;
 
@@ -247,10 +268,15 @@ export const api = {
     return ((await res.json()) as { messages: ImMessage[] }).messages;
   },
 
-  async sendMessage(channelId: string, content: string, type = "text"): Promise<ImMessage> {
+  async sendMessage(
+    channelId: string,
+    content: string,
+    type = "text",
+    payload?: Record<string, unknown>,
+  ): Promise<ImMessage> {
     const res = await directFetch(`/api/channels/${channelId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content, type }),
+      body: JSON.stringify({ content, type, payload }),
     });
     if (!res.ok) throw new Error(`发送失败：${await res.text()}`);
     return (await res.json()) as ImMessage;
@@ -277,6 +303,61 @@ export const api = {
 
   async deleteRole(roleId: string): Promise<void> {
     await directFetch(`/api/roles/${roleId}`, { method: "DELETE" });
+  },
+
+  async uploadFile(file: File): Promise<FileInfo> {
+    const res = await fetch(`${directBaseUrl}/api/files`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${directToken}`,
+        "content-type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+    if (!res.ok) throw new Error(`上传失败：${await res.text()}`);
+    return (await res.json()) as FileInfo;
+  },
+
+  fileUrl(fileId: string): string {
+    return `${directBaseUrl}/api/files/${fileId}?token=${encodeURIComponent(directToken)}`;
+  },
+
+  async listEnvs(): Promise<EnvView[]> {
+    const res = await directFetch("/api/envs");
+    if (!res.ok) throw new Error(`获取环境列表失败：${res.status}`);
+    return ((await res.json()) as { envs: EnvView[] }).envs;
+  },
+
+  async createEnv(input: { name: string; repoId?: string; runCmd?: string }): Promise<EnvView> {
+    const res = await directFetch("/api/envs", { method: "POST", body: JSON.stringify(input) });
+    if (!res.ok) throw new Error(`创建环境失败：${await res.text()}`);
+    return (await res.json()) as EnvView;
+  },
+
+  async envAction(id: string, action: "start" | "stop"): Promise<void> {
+    const res = await directFetch(`/api/envs/${id}/${action}`, { method: "POST" });
+    if (!res.ok) throw new Error(`${action === "start" ? "启动" : "停止"}失败：${await res.text()}`);
+  },
+
+  async envLogs(id: string, tail = 300): Promise<{ status: string; lines: string[] }> {
+    const res = await directFetch(`/api/envs/${id}/logs?tail=${tail}`);
+    if (!res.ok) throw new Error(`获取日志失败：${res.status}`);
+    return (await res.json()) as { status: string; lines: string[] };
+  },
+
+  async envExec(id: string, cmd: string): Promise<{ code: number; output: string }> {
+    const res = await directFetch(`/api/envs/${id}/exec`, {
+      method: "POST",
+      body: JSON.stringify({ cmd }),
+    });
+    if (!res.ok) throw new Error(`执行失败：${await res.text()}`);
+    return (await res.json()) as { code: number; output: string };
+  },
+
+  async deleteEnv(id: string): Promise<void> {
+    const res = await directFetch(`/api/envs/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`删除环境失败：${res.status}`);
   },
 
   connectIm(handler: (event: ImEvent) => void): () => void {

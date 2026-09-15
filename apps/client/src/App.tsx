@@ -3,6 +3,7 @@ import {
   RobotOutlined,
   MessageOutlined,
   FolderOutlined,
+  CloudServerOutlined,
   BarChartOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
@@ -11,6 +12,7 @@ import LoginPage from "./pages/LoginPage";
 import AgentPage from "./pages/AgentPage";
 import ImPage from "./pages/ImPage";
 import ReposPage from "./pages/ReposPage";
+import EnvsPage from "./pages/EnvsPage";
 import UsagePage from "./pages/UsagePage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -20,6 +22,7 @@ const PAGES: Record<PageKey, React.ReactNode> = {
   agent: <AgentPage />,
   im: <ImPage />,
   repos: <ReposPage />,
+  envs: <EnvsPage />,
   usage: <UsagePage />,
   settings: <SettingsPage />,
 };
@@ -42,6 +45,7 @@ export default function App() {
             { key: "agent", icon: <RobotOutlined />, label: "Agent 工作台" },
             { key: "im", icon: <MessageOutlined />, label: "团队消息" },
             { key: "repos", icon: <FolderOutlined />, label: "项目仓库" },
+            { key: "envs", icon: <CloudServerOutlined />, label: "在线环境" },
             { key: "usage", icon: <BarChartOutlined />, label: "用量统计" },
             { key: "settings", icon: <SettingOutlined />, label: "设置" },
           ]}

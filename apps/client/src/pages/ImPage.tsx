@@ -18,9 +18,41 @@ import {
   Typography,
   message,
 } from "antd";
-import { RobotOutlined, PlusOutlined, TeamOutlined } from "@ant-design/icons";
+import { RobotOutlined, PlusOutlined, TeamOutlined, PaperClipOutlined, FileOutlined } from "@ant-design/icons";
 import { api, type AiRoleView, type ChannelView, type ImMessage, type SessionUser } from "../api";
 import { useAppStore } from "../store/appStore";
+
+function formatSize(size?: number): string {
+  if (size == null) return "";
+  if (size < 1024) return `${size}B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`;
+  return `${(size / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function MessageBody({ m }: { m: ImMessage }) {
+  if (m.type === "image" && m.payload?.fileId) {
+    return (
+      <div className="im-msg-content">
+        <img
+          src={api.fileUrl(m.payload.fileId)}
+          alt={m.payload.name ?? "图片"}
+          style={{ maxWidth: 320, maxHeight: 240, borderRadius: 6, display: "block" }}
+        />
+        <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{m.content}</div>
+      </div>
+    );
+  }
+  if (m.type === "file" && m.payload?.fileId) {
+    return (
+      <div className="im-msg-content">
+        <Typography.Link href={api.fileUrl(m.payload.fileId)} target="_blank">
+          <FileOutlined /> {m.payload.name ?? m.content}（{formatSize(m.payload.size)}）
+        </Typography.Link>
+      </div>
+    );
+  }
+  return <div className="im-msg-content">{m.content}</div>;
+}
 
 export default function ImPage() {
   const { user, feedToAgent } = useAppStore();
@@ -86,6 +118,29 @@ export default function ImPage() {
     } catch (e) {
       message.error(e instanceof Error ? e.message : "发送失败");
       setInput(text);
+    }
+  }
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !active) return;
+    const hide = message.loading(`正在上传 ${file.name}…`, 0);
+    try {
+      const info = await api.uploadFile(file);
+      const type = info.mime.startsWith("image/") ? "image" : "file";
+      const sent = await api.sendMessage(active.id, info.name, type, {
+        fileId: info.id,
+        name: info.name,
+        size: info.size,
+        mime: info.mime,
+      });
+      setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
+      refreshChannels();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      hide();
     }
   }
 
@@ -188,13 +243,17 @@ export default function ImPage() {
                       </Button>
                     </Tooltip>
                   </div>
-                  <div className="im-msg-content">{m.content}</div>
+                  <MessageBody m={m} />
                 </div>
               ))}
               <div ref={bottomRef} />
             </div>
 
             <Space.Compact style={{ width: "100%" }}>
+              <label className="ant-btn" style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                <PaperClipOutlined />
+                <input type="file" hidden onChange={(e) => void onPickFile(e)} />
+              </label>
               <Input.TextArea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
