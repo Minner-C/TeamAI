@@ -263,19 +263,61 @@ export async function gatewayRoutes(app: FastifyInstance) {
 
   app.patch("/api/admin/providers/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { enabled?: boolean } | undefined;
-    if (body?.enabled == null) return reply.code(400).send({ error: "enabled required" });
-    if (!store.setProviderEnabled(app.db, id, body.enabled)) {
-      return reply.code(404).send({ error: "provider not found" });
+    const body = req.body as { enabled?: boolean; models?: string[] } | undefined;
+    if (body?.enabled == null && !body?.models) return reply.code(400).send({ error: "enabled or models required" });
+    const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
+    if (!row) return reply.code(404).send({ error: "provider not found" });
+    if (body.enabled != null) store.setProviderEnabled(app.db, id, body.enabled);
+    if (body.models) {
+      app.db.prepare("UPDATE providers SET models_json = ? WHERE id = ?").run(JSON.stringify(body.models), id);
     }
     recordAudit(app.db, {
       userId: req.user!.id,
       userEmail: req.user!.email,
-      action: body.enabled ? "provider.enable" : "provider.disable",
-      target: id,
+      action: body.models ? "provider.update_models" : body.enabled ? "provider.enable" : "provider.disable",
+      target: row.name,
+      detail: body.models ? `models=${body.models.join(",")}` : undefined,
       ip: req.ip,
     });
     return { ok: true };
+  });
+
+  app.post("/api/admin/providers/:id/test", { preHandler: requireAdmin }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
+    if (!row) return reply.code(404).send({ error: "provider not found" });
+    const base = row.base_url.replace(/\/+$/, "");
+    const isAnthropic = row.type === "anthropic";
+    const modelsUrl = isAnthropic
+      ? `${base.replace(/\/v1$/, "")}/v1/models`
+      : `${base.endsWith("/v1") ? base : `${base}/v1`}/models`;
+    const apiKey = providerApiKey(row, app.config.jwtSecret);
+    const started = Date.now();
+    try {
+      const res = await fetch(modelsUrl, {
+        headers: upstreamHeaders(row, apiKey),
+        signal: AbortSignal.timeout(8000),
+      });
+      const latencyMs = Date.now() - started;
+      const text = await res.text();
+      if (!res.ok) {
+        return { ok: false, status: res.status, latencyMs, error: text.slice(0, 300) };
+      }
+      let models: string[] = [];
+      try {
+        const data = JSON.parse(text) as { data?: Array<{ id: string }> };
+        models = (data.data ?? []).map((m) => m.id).filter(Boolean);
+      } catch {
+        // 非 JSON 响应视为连通但无模型列表
+      }
+      return { ok: true, status: res.status, latencyMs, models };
+    } catch (err) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - started,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   });
 
   app.delete("/api/admin/providers/:id", { preHandler: requireAdmin }, async (req, reply) => {

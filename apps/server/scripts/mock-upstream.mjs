@@ -8,6 +8,14 @@ http
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       const json = JSON.parse(body || "{}");
+      if (req.url === "/v1/models") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ object: "list", data: [
+          { id: "demo-model", object: "model" },
+          { id: "demo-model-pro", object: "model" },
+        ] }));
+        return;
+      }
       if (req.url !== "/v1/chat/completions") {
         res.writeHead(404).end();
         return;

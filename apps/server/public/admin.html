@@ -163,6 +163,7 @@ async function renderProviders(c) {
       <td>${p.models.join(", ") || "<i>全部模型</i>"}</td>
       <td><span class="tag ${p.enabled ? "on" : "off"}">${p.enabled ? "启用" : "停用"}</span></td>
       <td>
+        <button class="sm ghost" onclick="testProvider('${p.id}', '${p.name}')">测试</button>
         <button class="sm ghost" onclick="toggleProvider('${p.id}', ${!p.enabled})">${p.enabled ? "停用" : "启用"}</button>
         <button class="sm danger" onclick="delProvider('${p.id}')">删除</button>
       </td>
@@ -205,6 +206,32 @@ async function addProvider() {
 async function toggleProvider(id, enabled) {
   await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
   renderTab();
+}
+async function testProvider(id, name) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = "测试中…";
+  try {
+    const r = await req(`/api/admin/providers/${id}/test`, { method: "POST" });
+    if (!r.ok) {
+      alert(`「${name}」连通失败（${r.latencyMs}ms）\n${r.status ? "HTTP " + r.status + "：" : ""}${r.error ?? ""}`);
+    } else if (r.models?.length) {
+      const save = confirm(
+        `「${name}」连通正常（${r.latencyMs}ms）\n拉取到 ${r.models.length} 个模型：\n${r.models.slice(0, 20).join(", ")}${r.models.length > 20 ? " …" : ""}\n\n是否保存为该 Provider 的模型列表？`,
+      );
+      if (save) {
+        await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ models: r.models }) });
+        renderTab();
+      }
+    } else {
+      alert(`「${name}」连通正常（${r.latencyMs}ms），但上游未返回模型列表`);
+    }
+  } catch (e) {
+    alert(`测试失败：${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "测试";
+  }
 }
 async function delProvider(id) {
   if (!confirm("删除该 provider？")) return;

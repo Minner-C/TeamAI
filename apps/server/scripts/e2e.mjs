@@ -33,6 +33,11 @@ const upstream = http.createServer((req, res) => {
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     const json = JSON.parse(body || "{}");
+    if (req.url === "/v1/models") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ object: "list", data: [{ id: "mock-gpt", object: "model" }] }));
+      return;
+    }
     if (req.url === "/v1/chat/completions" && req.headers.authorization === "Bearer real-openai-key") {
       if (json.stream) {
         res.writeHead(200, { "content-type": "text/event-stream" });
@@ -128,6 +133,37 @@ try {
     }),
   });
   check("创建 OpenAI 兼容 provider", p1.status === 200, await p1.clone().text());
+  const p1Id = (await p1.json()).id;
+
+  const test1 = await (
+    await fetch(`${BASE}/api/admin/providers/${p1Id}/test`, { method: "POST", headers: authH })
+  ).json();
+  check("Provider 连通性测试成功并拉取模型", test1.ok === true && test1.models?.includes("mock-gpt"), JSON.stringify(test1));
+
+  const pBad = await (
+    await fetch(`${BASE}/api/admin/providers`, {
+      method: "POST",
+      headers: authH,
+      body: JSON.stringify({ name: "bad", type: "openai-compatible", baseUrl: "http://localhost:1", apiKey: "x", models: [] }),
+    })
+  ).json();
+  const testBad = await (
+    await fetch(`${BASE}/api/admin/providers/${pBad.id}/test`, { method: "POST", headers: authH })
+  ).json();
+  check("Provider 测试失败时返回错误信息", testBad.ok === false && !!testBad.error);
+  await fetch(`${BASE}/api/admin/providers/${pBad.id}`, { method: "DELETE", headers: authH });
+
+  const patchModels = await fetch(`${BASE}/api/admin/providers/${p1Id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ models: ["mock-gpt", "mock-gpt-2"] }),
+  });
+  check("PATCH 更新模型列表", patchModels.status === 200);
+  await fetch(`${BASE}/api/admin/providers/${p1Id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ models: ["mock-gpt"] }),
+  });
 
   const p2 = await fetch(`${BASE}/api/admin/providers`, {
     method: "POST",
