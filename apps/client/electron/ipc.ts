@@ -3,6 +3,7 @@ import { detectClis } from "./headlessManager.js";
 import { listModelRoutes } from "./modelRegistry.js";
 import { cloneRepo } from "./gitWorkspace.js";
 import { ImClient } from "./imClient.js";
+import { respondAgentPermission, runAgentCli, stopAgentCli } from "./agentRunner.js";
 import {
   checkServerHealth,
   chatStream,
@@ -71,6 +72,24 @@ export function registerIpcHandlers() {
     latestImClient?.send({ type: "typing", channelId });
     return true;
   });
+
+  ipcMain.handle(
+    "agent:run",
+    async (event, input: { taskId: string; cli: string; cwd: string; prompt: string }) => {
+      await runAgentCli(input.taskId, input.cli, input.cwd, input.prompt, (ev) => {
+        if (!event.sender.isDestroyed()) event.sender.send("agent:event", ev);
+      });
+      return true;
+    },
+  );
+  ipcMain.handle("agent:stop", (_e, taskId: string) => stopAgentCli(taskId).then(() => true));
+  ipcMain.handle(
+    "agent:permission",
+    (_e, input: { taskId: string; requestId: string; allow: boolean }) => {
+      respondAgentPermission(input.taskId, input.requestId, input.allow);
+      return true;
+    },
+  );
 
   ipcMain.handle(
     "chat:send",

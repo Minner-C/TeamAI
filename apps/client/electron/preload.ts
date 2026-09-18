@@ -28,6 +28,16 @@ const api = {
     ipcRenderer.invoke("sessions:save", input),
   imConnect: () => ipcRenderer.invoke("im:connect"),
   imTyping: (channelId: string) => ipcRenderer.invoke("im:typing", channelId),
+  agentRun: (input: { taskId: string; cli: string; cwd: string; prompt: string }) =>
+    ipcRenderer.invoke("agent:run", input),
+  agentStop: (taskId: string) => ipcRenderer.invoke("agent:stop", taskId),
+  agentPermission: (input: { taskId: string; requestId: string; allow: boolean }) =>
+    ipcRenderer.invoke("agent:permission", input),
+  onAgentEvent: (handler: (event: unknown) => void) => {
+    const listener = (_e: IpcRendererEvent, ev: unknown) => handler(ev);
+    ipcRenderer.on("agent:event", listener);
+    return () => ipcRenderer.removeListener("agent:event", listener);
+  },
   onImEvent: (handler: (event: unknown) => void) => {
     const listener = (_e: IpcRendererEvent, ev: unknown) => handler(ev);
     ipcRenderer.on("im:event", listener);

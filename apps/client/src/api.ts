@@ -39,6 +39,22 @@ export interface ChannelView {
   lastMessage: ImMessage | null;
 }
 
+export interface AgentChunk {
+  taskId: string;
+  kind: "message" | "thought" | "tool" | "permission" | "done" | "error";
+  text?: string;
+  permission?: { requestId: string; toolName: string; input: Record<string, unknown>; description?: string };
+}
+
+export interface SessionView {
+  id: string;
+  userId: string;
+  taskId: string;
+  cli: string;
+  title: string;
+  createdAt: number;
+}
+
 export interface AiRoleView {
   id: string;
   channel_id: string;
@@ -417,6 +433,37 @@ export const api = {
     if (imSocket && imSocket.readyState === WebSocket.OPEN) {
       imSocket.send(JSON.stringify({ type: "typing", channelId }));
     }
+  },
+
+  async agentRun(input: { taskId: string; cli: string; cwd: string; prompt: string }): Promise<void> {
+    if (!isElectron) throw new Error("本地 CLI 模式仅在桌面客户端可用");
+    const res = await window.teamai.agentRun(input);
+    if (!res) throw new Error("启动失败");
+  },
+
+  async agentStop(taskId: string): Promise<void> {
+    if (isElectron) await window.teamai.agentStop(taskId);
+  },
+
+  agentPermission(taskId: string, requestId: string, allow: boolean): void {
+    if (isElectron) void window.teamai.agentPermission({ taskId, requestId, allow });
+  },
+
+  onAgentChunk(handler: (chunk: AgentChunk) => void): () => void {
+    if (isElectron) return window.teamai.onAgentEvent((ev) => handler(ev as AgentChunk));
+    return () => {};
+  },
+
+  async listSessions(): Promise<SessionView[]> {
+    const res = await directFetch("/api/sessions");
+    if (!res.ok) throw new Error(`获取会话存档失败：${res.status}`);
+    return ((await res.json()) as { sessions: SessionView[] }).sessions;
+  },
+
+  async getSession(id: string): Promise<{ id: string; title: string; messages: Array<{ role: string; content: string }> }> {
+    const res = await directFetch(`/api/sessions/${id}`);
+    if (!res.ok) throw new Error(`读取会话失败：${res.status}`);
+    return res.json();
   },
 
   async chatSend(
