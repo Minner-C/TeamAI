@@ -39,7 +39,8 @@
   .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-bottom: 2px; transition: background .15s, color .15s; }
   .nav-item:hover { background: rgba(255,255,255,.06); color: #dfe3ee; }
   .nav-item.on { background: var(--sidebar-on); color: #c7cbff; font-weight: 500; }
-  .nav-item .ic { width: 18px; text-align: center; }
+  .nav-item::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .45; flex-shrink: 0; }
+  .nav-item.on::before { opacity: 1; }
   .side .me { padding: 14px 18px; border-top: 1px solid rgba(255,255,255,.07); font-size: 13px; }
   .side .me .name { color: #fff; font-weight: 500; }
   .side .me .out { color: #8b93ab; cursor: pointer; margin-left: 8px; }
@@ -106,7 +107,8 @@
   .toast { min-width: 240px; max-width: 380px; background: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgba(30,36,48,.14); padding: 12px 16px; font-size: 13px;
     display: flex; gap: 10px; align-items: flex-start; border-left: 3px solid var(--accent); animation: slidein .25s ease; }
   .toast.ok { border-left-color: var(--ok); } .toast.err { border-left-color: var(--err); }
-  .toast .ticon { flex-shrink: 0; }
+  .toast .tdot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: var(--accent); }
+  .toast.ok .tdot { background: var(--ok); } .toast.err .tdot { background: var(--err); }
   .toast.hide { animation: slideout .25s ease forwards; }
   @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
   @keyframes slideout { to { transform: translateX(30px); opacity: 0; } }
@@ -122,6 +124,7 @@
   .modal .m-body label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; }
   .modal .m-foot { padding: 0 20px 16px; display: flex; justify-content: flex-end; gap: 10px; }
   .key-show { background: #f6f7fb; border: 1px dashed #c9cee0; border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; margin-top: 10px; }
+  .bar { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
 </style>
 </head>
 <body>
@@ -144,7 +147,7 @@ const state = { testResults: {} };
 function toast(text, type = "ok", ms = 2600) {
   const el = document.createElement("div");
   el.className = `toast ${type}`;
-  el.innerHTML = `<span class="ticon">${type === "ok" ? "✅" : type === "err" ? "⛔" : "ℹ️"}</span><div>${esc(text)}</div>`;
+  el.innerHTML = `<span class="tdot"></span><div>${esc(text)}</div>`;
   $("#toasts").appendChild(el);
   setTimeout(() => { el.classList.add("hide"); setTimeout(() => el.remove(), 260); }, ms);
 }
@@ -245,13 +248,13 @@ async function doLogin() {
 
 /* ---------- 主框架 ---------- */
 const NAV = [
-  ["usage", "📊", "用量总览"],
-  ["providers", "🧠", "模型 Provider"],
-  ["keys", "🔑", "虚拟 Key"],
-  ["users", "👥", "成员"],
-  ["repos", "🗂", "Git 仓库"],
-  ["envs", "🖥", "在线环境"],
-  ["audit", "🛡", "审计日志"],
+  ["usage", "用量总览"],
+  ["providers", "模型 Provider"],
+  ["keys", "虚拟 Key"],
+  ["users", "成员"],
+  ["repos", "Git 仓库"],
+  ["envs", "在线环境"],
+  ["audit", "审计日志"],
 ];
 
 function renderMain() {
@@ -259,8 +262,8 @@ function renderMain() {
     <div class="shell">
       <aside class="side">
         <div class="brand"><div class="mark">T</div>TeamAI</div>
-        <nav class="nav">${NAV.map(([k, ic, n]) =>
-          `<div class="nav-item ${k === tab ? "on" : ""}" data-nav="${k}"><span class="ic">${ic}</span>${n}</div>`).join("")}
+        <nav class="nav">${NAV.map(([k, n]) =>
+          `<div class="nav-item ${k === tab ? "on" : ""}" data-nav="${k}">${n}</div>`).join("")}
         </nav>
         <div class="me"><span class="name">${esc(me.name)}</span> · ${esc(me.role)}<span class="out" id="logout">退出</span></div>
       </aside>
@@ -282,7 +285,7 @@ async function renderTab() {
     else if (tab === "repos") await renderRepos(c);
     else if (tab === "envs") await renderEnvs(c);
     else if (tab === "audit") await renderAudit(c);
-  } catch (e) { c.innerHTML = `<div class="card empty">⛔ ${esc(e.message)}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
 }
 
 const pageHead = (t, s) => `<div class="page-title">${t}</div><div class="page-sub">${s}</div>`;
@@ -326,6 +329,7 @@ async function renderProviders(c) {
       <td><span class="tag ${p.enabled ? "on" : "off"}">${p.enabled ? "启用" : "停用"}</span></td>
       <td>
         <button class="btn sm ghost" data-act="test" data-id="${p.id}" data-name="${esc(p.name)}">${t?.loading ? '<span class="spin"></span>' : "测试"}</button>
+        <button class="btn sm ghost" data-act="edit" data-id="${p.id}" data-name="${esc(p.name)}" data-models="${esc(p.models.join(","))}">编辑模型</button>
         <button class="btn sm ghost" data-act="toggle" data-id="${p.id}" data-enabled="${p.enabled ? 0 : 1}">${p.enabled ? "停用" : "启用"}</button>
         <button class="btn sm danger" data-act="del" data-id="${p.id}" data-name="${esc(p.name)}">删除</button>
       </td>
@@ -338,43 +342,59 @@ async function renderProviders(c) {
   }).join("");
   c.innerHTML = `
     ${pageHead("模型 Provider", "接入上游大模型 API，真实 Key 加密后仅存服务端")}
-    <div class="card"><h3>添加 Provider</h3>
-      <div class="row">
-        <div class="field"><label>名称</label><input id="p-name" placeholder="如 deepseek" /></div>
-        <div class="field"><label>协议类型</label><select id="p-type">
+    <div class="bar"><button class="btn" id="add-provider">添加 Provider</button></div>
+    <div class="card"><h3>Provider 列表 <span class="sub">${providers.length} 个</span></h3>
+      <table><thead><tr><th>名称</th><th>类型</th><th>Base URL</th><th>模型</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">还没有 Provider，点击右上角「添加 Provider」接入</td></tr>'}</tbody></table>
+      <div class="hint">客户端与 CLI 的 BASE_URL 指向本服务的 <span class="mono">${location.origin}/v1</span>，用虚拟 Key 鉴权即可，无需接触真实 Key。</div>
+    </div>`;
+
+  $("#add-provider").onclick = () => {
+    openModal({
+      title: "添加 Provider",
+      okText: "添加",
+      body:
+        field("名称", '<input id="m-p-name" placeholder="如 deepseek" />') +
+        field("协议类型", `<select id="m-p-type">
           <option value="openai-compatible">OpenAI 兼容（DeepSeek / GLM / Qwen / Moonshot…）</option>
           <option value="anthropic">Anthropic</option>
           <option value="gemini">Gemini</option>
-        </select></div>
-        <div class="field"><label>Base URL</label><input id="p-url" placeholder="https://api.deepseek.com" style="min-width:260px" /></div>
-        <div class="field"><label>真实 API Key</label><input id="p-key" type="password" placeholder="sk-…" /></div>
-        <div class="field"><label>模型（逗号分隔，空=全部）</label><input id="p-models" placeholder="deepseek-chat,deepseek-reasoner" style="min-width:200px" /></div>
-        <button class="btn" id="add-provider">添加</button>
-      </div>
-      <div class="hint">客户端与 CLI 的 BASE_URL 指向本服务的 <span class="mono">${location.origin}/v1</span>，用虚拟 Key 鉴权即可，无需接触真实 Key。</div>
-    </div>
-    <div class="card"><h3>Provider 列表 <span class="sub">${providers.length} 个</span></h3>
-      <table><thead><tr><th>名称</th><th>类型</th><th>Base URL</th><th>模型</th><th>状态</th><th>操作</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="6" class="empty">还没有 Provider，先在上方添加</td></tr>'}</tbody></table>
-    </div>`;
-
-  $("#add-provider").onclick = async () => {
-    try {
-      await req("/api/admin/providers", {
-        method: "POST",
-        body: JSON.stringify({
-          name: $("#p-name").value.trim(), type: $("#p-type").value, baseUrl: $("#p-url").value.trim(),
-          apiKey: $("#p-key").value,
-          models: $("#p-models").value.split(",").map((s) => s.trim()).filter(Boolean),
-        }),
-      });
-      toast("Provider 已添加");
-      renderTab();
-    } catch (e) { toast(e.message, "err", 3600); }
+        </select>`) +
+        field("Base URL", '<input id="m-p-url" placeholder="https://api.deepseek.com" />') +
+        field("真实 API Key", '<input id="m-p-key" type="password" placeholder="sk-…" />') +
+        field("模型（逗号分隔，空 = 全部）", '<input id="m-p-models" placeholder="deepseek-chat,deepseek-reasoner" />'),
+      onOk: async (b) => {
+        const name = $("#m-p-name", b).value.trim();
+        const baseUrl = $("#m-p-url", b).value.trim();
+        const apiKey = $("#m-p-key", b).value;
+        if (!name || !baseUrl || !apiKey) { toast("名称、Base URL、API Key 均必填", "err"); return false; }
+        await req("/api/admin/providers", {
+          method: "POST",
+          body: JSON.stringify({
+            name, type: $("#m-p-type", b).value, baseUrl, apiKey,
+            models: $("#m-p-models", b).value.split(",").map((s) => s.trim()).filter(Boolean),
+          }),
+        });
+        toast("Provider 已添加");
+        renderTab();
+      },
+    });
   };
   $$("[data-act]", c).forEach((btn) => (btn.onclick = () => {
     const { act, id, name, enabled } = btn.dataset;
-    if (act === "toggle") {
+    if (act === "edit") {
+      openModal({
+        title: `编辑模型：${name}`,
+        okText: "保存",
+        body: field("模型（逗号分隔，空 = 全部）", `<input id="m-edit-models" value="${btn.dataset.models}" placeholder="留空表示转发全部模型" />`),
+        onOk: async (b) => {
+          const models = $("#m-edit-models", b).value.split(",").map((s) => s.trim()).filter(Boolean);
+          await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ models }) });
+          toast(models.length ? `已保存 ${models.length} 个模型` : "已改为转发全部模型");
+          renderTab();
+        },
+      });
+    } else if (act === "toggle") {
       req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ enabled: enabled === "1" }) })
         .then(() => { toast(enabled === "1" ? "已启用" : "已停用"); renderTab(); })
         .catch((e) => toast(e.message, "err"));
@@ -413,34 +433,36 @@ async function renderKeys(c) {
     </tr>`).join("");
   c.innerHTML = `
     ${pageHead("虚拟 Key", "分发给成员或 CLI 的访问凭证，可随时吊销、按配额限流")}
-    <div class="card"><h3>签发新 Key</h3>
-      <div class="row">
-        <div class="field"><label>备注名</label><input id="k-name" placeholder="如：小明的 CLI" /></div>
-        <div class="field"><label>配额（tokens，空=不限）</label><input id="k-quota" type="number" placeholder="1000000" /></div>
-        <button class="btn" id="issue-key">签发</button>
-      </div>
-    </div>
+    <div class="bar"><button class="btn" id="issue-key">签发新 Key</button></div>
     <div class="card"><h3>Key 列表 <span class="sub">${keys.length} 个</span></h3>
       <table><thead><tr><th>Key</th><th>备注</th><th>配额</th><th>状态</th><th>创建时间</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无 Key</td></tr>'}</tbody></table>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无 Key，点击右上角「签发新 Key」创建</td></tr>'}</tbody></table>
     </div>`;
 
-  $("#issue-key").onclick = async () => {
-    try {
-      const k = await req("/api/keys", {
-        method: "POST",
-        body: JSON.stringify({
-          name: $("#k-name").value.trim(),
-          quotaTokens: $("#k-quota").value ? Number($("#k-quota").value) : null,
-        }),
-      });
-      openModal({
-        title: "Key 已签发",
-        body: `<p style="line-height:1.7">请立即复制，完整 Key 只显示这一次：</p><div class="key-show">${esc(k.key)}</div>`,
-        okText: "我已保存",
-        onOk: () => { navigator.clipboard?.writeText(k.key).catch(() => {}); renderTab(); },
-      });
-    } catch (e) { toast(e.message, "err", 3600); }
+  $("#issue-key").onclick = () => {
+    openModal({
+      title: "签发新 Key",
+      okText: "签发",
+      body:
+        field("备注名", '<input id="m-k-name" placeholder="如：小明的 CLI" />') +
+        field("配额（tokens，空 = 不限）", '<input id="m-k-quota" type="number" placeholder="1000000" />'),
+      onOk: async (b) => {
+        const quotaRaw = $("#m-k-quota", b).value;
+        const k = await req("/api/keys", {
+          method: "POST",
+          body: JSON.stringify({
+            name: $("#m-k-name", b).value.trim(),
+            quotaTokens: quotaRaw ? Number(quotaRaw) : null,
+          }),
+        });
+        openModal({
+          title: "Key 已签发",
+          body: `<p style="line-height:1.7">请立即复制，完整 Key 只显示这一次：</p><div class="key-show">${esc(k.key)}</div>`,
+          okText: "我已保存",
+          onOk: () => { navigator.clipboard?.writeText(k.key).catch(() => {}); renderTab(); },
+        });
+      },
+    });
   };
   $$("[data-revoke]", c).forEach((btn) => (btn.onclick = () =>
     confirmBox("吊销 Key", "吊销后立即失效，使用该 Key 的调用将被拒绝。", async () => {
@@ -462,27 +484,29 @@ async function renderUsers(c) {
     </tr>`).join("");
   c.innerHTML = `
     ${pageHead("成员", "团队成员账号，创建后即可登录客户端")}
-    <div class="card"><h3>添加成员</h3>
-      <div class="row">
-        <div class="field"><label>姓名</label><input id="u-name" placeholder="张三" /></div>
-        <div class="field"><label>邮箱</label><input id="u-email" placeholder="zhangsan@team.local" /></div>
-        <div class="field"><label>初始密码</label><input id="u-pw" placeholder="至少 6 位" /></div>
-        <button class="btn" id="add-user">创建</button>
-      </div>
-    </div>
+    <div class="bar"><button class="btn" id="add-user">添加成员</button></div>
     <div class="card"><h3>成员列表 <span class="sub">${users.length} 人</span></h3>
       <table><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>加入时间</th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>`;
-  $("#add-user").onclick = async () => {
-    try {
-      await req("/api/admin/users", {
-        method: "POST",
-        body: JSON.stringify({ name: $("#u-name").value.trim(), email: $("#u-email").value.trim(), password: $("#u-pw").value }),
-      });
-      toast("成员已创建");
-      renderTab();
-    } catch (e) { toast(e.message, "err", 3600); }
+  $("#add-user").onclick = () => {
+    openModal({
+      title: "添加成员",
+      okText: "创建",
+      body:
+        field("姓名", '<input id="m-u-name" placeholder="张三" />') +
+        field("邮箱", '<input id="m-u-email" placeholder="zhangsan@team.local" />') +
+        field("初始密码", '<input id="m-u-pw" type="password" placeholder="至少 6 位" />'),
+      onOk: async (b) => {
+        const name = $("#m-u-name", b).value.trim();
+        const email = $("#m-u-email", b).value.trim();
+        const password = $("#m-u-pw", b).value;
+        if (!name || !email || password.length < 6) { toast("姓名、邮箱必填，密码至少 6 位", "err"); return false; }
+        await req("/api/admin/users", { method: "POST", body: JSON.stringify({ name, email, password }) });
+        toast("成员已创建");
+        renderTab();
+      },
+    });
   };
 }
 
@@ -500,24 +524,28 @@ async function renderRepos(c) {
   }).join("");
   c.innerHTML = `
     ${pageHead("Git 仓库", "内置 Git 托管，smart HTTP 协议，凭 token 克隆/推送")}
-    <div class="card"><h3>新建仓库</h3>
-      <div class="row">
-        <div class="field"><label>分组</label><input id="r-group" value="default" /></div>
-        <div class="field"><label>仓库名</label><input id="r-name" placeholder="my-project" /></div>
-        <button class="btn" id="add-repo">创建</button>
-      </div>
-      <div class="hint">克隆凭证格式：<span class="mono">http://&lt;邮箱&gt;:&lt;token&gt;@${location.host}/git/&lt;分组&gt;/&lt;仓库名&gt;.git</span>，token 可在客户端登录后获取。</div>
-    </div>
+    <div class="bar"><button class="btn" id="add-repo">新建仓库</button></div>
     <div class="card"><h3>仓库列表 <span class="sub">${repos.length} 个</span></h3>
       <table><thead><tr><th>仓库</th><th>创建时间</th><th>地址</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="empty">暂无仓库</td></tr>'}</tbody></table>
+      <tbody>${rows || '<tr><td colspan="4" class="empty">暂无仓库，点击右上角「新建仓库」创建</td></tr>'}</tbody></table>
+      <div class="hint">克隆凭证格式：<span class="mono">http://&lt;邮箱&gt;:&lt;token&gt;@${location.host}/git/&lt;分组&gt;/&lt;仓库名&gt;.git</span>，token 可在客户端登录后获取。</div>
     </div>`;
-  $("#add-repo").onclick = async () => {
-    try {
-      await req("/api/repos", { method: "POST", body: JSON.stringify({ group: $("#r-group").value.trim(), name: $("#r-name").value.trim() }) });
-      toast("仓库已创建");
-      renderTab();
-    } catch (e) { toast(e.message, "err", 3600); }
+  $("#add-repo").onclick = () => {
+    openModal({
+      title: "新建仓库",
+      okText: "创建",
+      body:
+        field("分组", '<input id="m-r-group" value="default" />') +
+        field("仓库名", '<input id="m-r-name" placeholder="my-project" />'),
+      onOk: async (b) => {
+        const group = $("#m-r-group", b).value.trim();
+        const name = $("#m-r-name", b).value.trim();
+        if (!group || !name) { toast("分组与仓库名均必填", "err"); return false; }
+        await req("/api/repos", { method: "POST", body: JSON.stringify({ group, name }) });
+        toast("仓库已创建");
+        renderTab();
+      },
+    });
   };
   $$("[data-copy]", c).forEach((el) => (el.onclick = () => {
     navigator.clipboard?.writeText(el.dataset.copy).then(() => toast("地址已复制")).catch(() => toast("复制失败", "err"));
@@ -552,36 +580,39 @@ async function renderEnvs(c) {
     </tr>`).join("");
   c.innerHTML = `
     ${pageHead("在线环境", "服务端上的隔离工作区：从仓库克隆代码，跑 dev server 或脚本")}
-    <div class="card"><h3>新建环境</h3>
-      <div class="row">
-        <div class="field"><label>环境名</label><input id="e-name" placeholder="前端 dev 环境" /></div>
-        <div class="field"><label>从仓库克隆</label><select id="e-repo">
-          <option value="">（空工作区）</option>
-          ${repos.map((r) => `<option value="${r.id}">${esc(r.group)}/${esc(r.name)}</option>`).join("")}
-        </select></div>
-        <div class="field"><label>启动命令（可空）</label><input id="e-cmd" placeholder="npm run dev" style="min-width:220px" /></div>
-        <button class="btn" id="add-env">创建</button>
-      </div>
-    </div>
+    <div class="bar"><button class="btn" id="add-env">新建环境</button></div>
     <div class="card"><h3>环境列表 <span class="sub">${envs.length} 个</span></h3>
       <table><thead><tr><th>名称</th><th>仓库</th><th>创建者</th><th>启动命令</th><th>状态</th><th>操作</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无环境</td></tr>'}</tbody></table>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无环境，点击右上角「新建环境」创建</td></tr>'}</tbody></table>
     </div>
     <div class="card" id="env-log-card" style="display:none"><h3 id="env-log-title">日志</h3><div class="logbox" id="env-log-body"></div></div>`;
 
-  $("#add-env").onclick = async () => {
-    try {
-      await req("/api/envs", {
-        method: "POST",
-        body: JSON.stringify({
-          name: $("#e-name").value.trim(),
-          repoId: $("#e-repo").value || undefined,
-          runCmd: $("#e-cmd").value.trim() || undefined,
-        }),
-      });
-      toast("环境已创建");
-      renderTab();
-    } catch (e) { toast(e.message, "err", 3600); }
+  $("#add-env").onclick = () => {
+    openModal({
+      title: "新建环境",
+      okText: "创建",
+      body:
+        field("环境名", '<input id="m-e-name" placeholder="前端 dev 环境" />') +
+        field("从仓库克隆", `<select id="m-e-repo">
+          <option value="">（空工作区）</option>
+          ${repos.map((r) => `<option value="${r.id}">${esc(r.group)}/${esc(r.name)}</option>`).join("")}
+        </select>`) +
+        field("启动命令（可空）", '<input id="m-e-cmd" placeholder="npm run dev" />'),
+      onOk: async (b) => {
+        const name = $("#m-e-name", b).value.trim();
+        if (!name) { toast("环境名必填", "err"); return false; }
+        await req("/api/envs", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            repoId: $("#m-e-repo", b).value || undefined,
+            runCmd: $("#m-e-cmd", b).value.trim() || undefined,
+          }),
+        });
+        toast("环境已创建");
+        renderTab();
+      },
+    });
   };
   $$("[data-start]", c).forEach((b) => (b.onclick = () =>
     req(`/api/envs/${b.dataset.start}/start`, { method: "POST" }).then(() => { toast("已启动"); renderTab(); }).catch((e) => toast(e.message, "err"))));
