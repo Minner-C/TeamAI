@@ -61,11 +61,12 @@ export async function imWs(app: FastifyInstance) {
         }
         case "typing": {
           if (!userId) return;
+          if (!isMember(app.db, event.channelId, userId)) return;
           broadcastToChannel(app.db, event.channelId, {
             type: "typing",
             channelId: event.channelId,
             userId,
-          });
+          }, userId);
           break;
         }
         default:

@@ -282,6 +282,46 @@ try {
   const roleEvents = memberWs.events.filter((e) => e.message?.senderRoleId === autoRole.id);
   check("AI 角色的消息不会触发其它角色（防循环）", roleEvents.length === 1, `got ${roleEvents.length}`);
 
+  memberWs.ws.send(JSON.stringify({ type: "typing", channelId: channel.id }));
+  const typingEv = await adminWs.waitFor((e) => e.type === "typing" && e.channelId === channel.id);
+  check("typing 事件广播给对方", typingEv.userId === member.id, JSON.stringify(typingEv));
+  await new Promise((r) => setTimeout(r, 400));
+  check(
+    "发送者本人不收自己的 typing",
+    !memberWs.events.some((e) => e.type === "typing" && e.userId === member.id),
+  );
+
+  const pageChRes = await fetch(`${BASE}/api/channels`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ type: "group", name: "分页测试群", memberIds: [member.id] }),
+  });
+  const pageCh = await pageChRes.json();
+  for (let i = 1; i <= 60; i++) {
+    await fetch(`${BASE}/api/channels/${pageCh.id}/messages`, {
+      method: "POST",
+      headers: authH,
+      body: JSON.stringify({ content: `msg-${String(i).padStart(3, "0")}` }),
+    });
+  }
+  const page1 = await (
+    await fetch(`${BASE}/api/channels/${pageCh.id}/messages?limit=50`, { headers: authH })
+  ).json();
+  const oldest = page1.messages[0];
+  const page2 = await (
+    await fetch(`${BASE}/api/channels/${pageCh.id}/messages?before=${oldest.createdAt}&limit=50`, { headers: authH })
+  ).json();
+  const allIds = new Set([...page1.messages, ...page2.messages].map((m) => m.id));
+  check("默认返回最近 50 条", page1.messages.length === 50, `got ${page1.messages.length}`);
+  check(
+    "before 分页取到更早消息且无重叠",
+    page2.messages.length >= 5 &&
+      !page2.messages.some((m) => m.id === oldest.id) &&
+      allIds.size >= 55 &&
+      page2.messages.every((m) => m.createdAt <= oldest.createdAt),
+    `page2=${page2.messages.length} union=${allIds.size}`,
+  );
+
   const outsider = await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}x` },

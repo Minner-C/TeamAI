@@ -129,6 +129,18 @@ async function resolveRef(row: RepoRow, ref: string): Promise<string> {
   }
 }
 
+export async function repoBranches(row: RepoRow): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", row.path, "for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    );
+    return stdout.split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function repoCommits(row: RepoRow, ref = "HEAD", limit = 20) {
   try {
     const { stdout } = await execFileAsync(

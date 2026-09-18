@@ -27,6 +27,7 @@ const api = {
   saveSession: (input: { title?: string; cli?: string; taskId?: string; messages: unknown[] }) =>
     ipcRenderer.invoke("sessions:save", input),
   imConnect: () => ipcRenderer.invoke("im:connect"),
+  imTyping: (channelId: string) => ipcRenderer.invoke("im:typing", channelId),
   onImEvent: (handler: (event: unknown) => void) => {
     const listener = (_e: IpcRendererEvent, ev: unknown) => handler(ev);
     ipcRenderer.on("im:event", listener);

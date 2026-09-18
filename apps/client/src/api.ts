@@ -12,6 +12,8 @@ export interface RepoView {
   name: string;
   group: string;
   ownerId: string;
+  visibility: string;
+  memberCount: number;
   createdAt: number;
 }
 
@@ -79,6 +81,7 @@ export interface FileInfo {
 const isElectron = typeof window !== "undefined" && !!window.teamai;
 
 let directToken = localStorage.getItem("teamai_token") ?? "";
+let imSocket: WebSocket | null = null;
 let directBaseUrl = isElectron
   ? (localStorage.getItem("teamai_server_url") ?? "http://localhost:8787")
   : "";
@@ -185,11 +188,11 @@ export const api = {
     return ((await res.json()) as { repos: RepoView[] }).repos;
   },
 
-  async createRepo(name: string, group: string) {
+  async createRepo(name: string, group: string, visibility = "team") {
     if (isElectron) return window.teamai.createRepo(name, group);
     const res = await directFetch("/api/repos", {
       method: "POST",
-      body: JSON.stringify({ name, group }),
+      body: JSON.stringify({ name, group, visibility }),
     });
     if (!res.ok) throw new Error(`创建仓库失败：${await res.text()}`);
     return (await res.json()) as RepoView;
@@ -201,13 +204,20 @@ export const api = {
     if (!res.ok) throw new Error(`删除失败：${res.status}`);
   },
 
-  async repoCommits(id: string) {
+  async repoCommits(id: string, ref?: string) {
+    const q = ref ? `?ref=${encodeURIComponent(ref)}` : "";
     if (isElectron) return window.teamai.repoCommits(id);
-    const res = await directFetch(`/api/repos/${id}/commits`);
+    const res = await directFetch(`/api/repos/${id}/commits${q}`);
     if (!res.ok) throw new Error(`获取提交历史失败：${res.status}`);
     return ((await res.json()) as {
       commits: Array<{ hash: string; author: string; at: number; message: string }>;
     }).commits;
+  },
+
+  async repoBranches(id: string): Promise<string[]> {
+    const res = await directFetch(`/api/repos/${id}/branches`);
+    if (!res.ok) throw new Error(`获取分支失败：${res.status}`);
+    return ((await res.json()) as { branches: string[] }).branches;
   },
 
   repoRemoteUrl(group: string, name: string, email: string): Promise<string> {
@@ -384,6 +394,7 @@ export const api = {
     }
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+    imSocket = ws;
     ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: directToken }));
     ws.onmessage = (e) => {
       try {
@@ -392,7 +403,20 @@ export const api = {
         // ignore malformed frames
       }
     };
-    return () => ws.close();
+    return () => {
+      if (imSocket === ws) imSocket = null;
+      ws.close();
+    };
+  },
+
+  sendTyping(channelId: string): void {
+    if (isElectron) {
+      void window.teamai.imTyping(channelId);
+      return;
+    }
+    if (imSocket && imSocket.readyState === WebSocket.OPEN) {
+      imSocket.send(JSON.stringify({ type: "typing", channelId }));
+    }
   },
 
   async chatSend(

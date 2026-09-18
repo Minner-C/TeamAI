@@ -21,6 +21,7 @@ import {
 } from "./serverClient.js";
 
 export function registerIpcHandlers() {
+  let latestImClient: ImClient | null = null;
   ipcMain.handle("cli:detect", () => detectClis());
   ipcMain.handle("models:routes", () => listModelRoutes());
   ipcMain.handle("server:health", () => checkServerHealth());
@@ -55,10 +56,19 @@ export function registerIpcHandlers() {
   ipcMain.handle("im:connect", (event) => {
     const conn = getConnection();
     const client = new ImClient();
+    latestImClient = client;
     client.connect(conn.baseUrl, conn.token ?? "", (ev) => {
       if (!event.sender.isDestroyed()) event.sender.send("im:event", ev);
     });
-    event.sender.once("destroyed", () => client.disconnect());
+    event.sender.once("destroyed", () => {
+      client.disconnect();
+      if (latestImClient === client) latestImClient = null;
+    });
+    return true;
+  });
+
+  ipcMain.handle("im:typing", (_e, channelId: string) => {
+    latestImClient?.send({ type: "typing", channelId });
     return true;
   });
 

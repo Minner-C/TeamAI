@@ -9,6 +9,7 @@ import {
   listRepoMembers,
   listRepos,
   removeRepoMember,
+  repoBranches,
   repoCommits,
   repoTree,
   setRepoVisibility,
@@ -90,7 +91,8 @@ export async function gitRoutes(app: FastifyInstance) {
     if (!canAccessRepo(app.db, row, user.id, user.role === "admin")) {
       return reply.code(403).send({ error: "no access to this repo" });
     }
-    return { commits: await repoCommits(row) };
+    const q = req.query as { ref?: string };
+    return { commits: await repoCommits(row, q.ref || "HEAD") };
   });
 
   app.get("/:id/tree", { preHandler: requireUser }, async (req, reply) => {
@@ -101,7 +103,19 @@ export async function gitRoutes(app: FastifyInstance) {
     if (!canAccessRepo(app.db, row, user.id, user.role === "admin")) {
       return reply.code(403).send({ error: "no access to this repo" });
     }
-    return { tree: await repoTree(row) };
+    const q = req.query as { ref?: string };
+    return { tree: await repoTree(row, q.ref || "HEAD") };
+  });
+
+  app.get("/:id/branches", { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = getRepo(app, id);
+    if (!row) return reply.code(404).send({ error: "not found" });
+    const user = req.user as UserRow;
+    if (!canAccessRepo(app.db, row, user.id, user.role === "admin")) {
+      return reply.code(403).send({ error: "no access to this repo" });
+    }
+    return { branches: await repoBranches(row) };
   });
 
   app.patch("/:id/visibility", { preHandler: requireUser }, async (req, reply) => {

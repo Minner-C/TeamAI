@@ -10,6 +10,8 @@ export interface RepoView {
   name: string;
   group: string;
   ownerId: string;
+  visibility: string;
+  memberCount: number;
   createdAt: number;
 }
 
@@ -48,6 +50,7 @@ export interface TeamAiApi {
     messages: unknown[];
   }): Promise<string>;
   imConnect(): Promise<boolean>;
+  imTyping(channelId: string): Promise<boolean>;
   onImEvent(handler: (event: unknown) => void): () => void;
   chatSend(
     requestId: string,

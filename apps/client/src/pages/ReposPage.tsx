@@ -6,6 +6,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -30,6 +31,9 @@ export default function ReposPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [commits, setCommits] = useState<Commit[] | null>(null);
   const [commitsRepo, setCommitsRepo] = useState("");
+  const [commitsRepoId, setCommitsRepoId] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branch, setBranch] = useState("");
   const [form] = Form.useForm();
 
   const refresh = useCallback(() => {
@@ -41,9 +45,9 @@ export default function ReposPage() {
 
   useEffect(refresh, [refresh]);
 
-  async function onCreate(values: { name: string; group?: string }) {
+  async function onCreate(values: { name: string; group?: string; visibility?: string }) {
     try {
-      await api.createRepo(values.name, values.group || "default");
+      await api.createRepo(values.name, values.group || "default", values.visibility || "team");
       message.success("仓库已创建");
       setCreateOpen(false);
       form.resetFields();
@@ -70,10 +74,17 @@ export default function ReposPage() {
     }
   }
 
-  async function showCommits(repo: RepoView) {
+  async function showCommits(repo: RepoView, ref?: string) {
     try {
       setCommitsRepo(`${repo.group}/${repo.name}`);
-      setCommits(await api.repoCommits(repo.id));
+      setCommitsRepoId(repo.id);
+      const [commitsData, branchList] = await Promise.all([
+        api.repoCommits(repo.id, ref),
+        api.repoBranches(repo.id).catch(() => [] as string[]),
+      ]);
+      setCommits(commitsData);
+      setBranches(branchList);
+      setBranch(ref ?? "");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "加载失败");
     }
@@ -98,9 +109,12 @@ export default function ReposPage() {
           {
             title: "仓库",
             render: (_, r: RepoView) => (
-              <Typography.Text strong>
-                {r.group}/{r.name}
-              </Typography.Text>
+              <Space>
+                <Typography.Text strong>
+                  {r.group}/{r.name}
+                </Typography.Text>
+                {r.visibility === "private" && <Tag color="orange">私有</Tag>}
+              </Space>
             ),
           },
           {
@@ -144,6 +158,14 @@ export default function ReposPage() {
           <Form.Item label="分组" name="group" initialValue="default">
             <Input placeholder="default" />
           </Form.Item>
+          <Form.Item label="可见性" name="visibility" initialValue="team">
+            <Select
+              options={[
+                { value: "team", label: "团队可见（全部成员可读写）" },
+                { value: "private", label: "私有（仅仓库成员，可在控制台管理）" },
+              ]}
+            />
+          </Form.Item>
           <Form.Item
             label="仓库名"
             name="name"
@@ -163,6 +185,18 @@ export default function ReposPage() {
         onClose={() => setCommits(null)}
         width={480}
       >
+        {branches.length > 0 && (
+          <Select
+            style={{ width: 200, marginBottom: 16 }}
+            placeholder="选择分支"
+            value={branch || undefined}
+            onChange={(ref) => {
+              const repo = repos.find((r) => r.id === commitsRepoId);
+              if (repo) void showCommits(repo, ref);
+            }}
+            options={branches.map((b) => ({ value: b, label: b }))}
+          />
+        )}
         {commits?.length === 0 && <Tag>空仓库，暂无提交</Tag>}
         <Timeline
           items={(commits ?? []).map((c) => ({

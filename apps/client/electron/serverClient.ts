@@ -121,6 +121,8 @@ export interface RepoView {
   name: string;
   group: string;
   ownerId: string;
+  visibility: string;
+  memberCount: number;
   createdAt: number;
 }
 

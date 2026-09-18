@@ -105,6 +105,46 @@ try {
     tree.tree.some((f) => f && f.path === "hello.md"),
   );
 
+  execFileSync("git", ["-C", workDir, "checkout", "-b", "dev"], { stdio: "pipe" });
+  fs.writeFileSync(path.join(workDir, "dev-only.md"), "# dev branch\n");
+  execFileSync("git", ["-C", workDir, "add", "."], { stdio: "pipe" });
+  execFileSync("git", ["-C", workDir, "-c", "user.email=t@t.t", "-c", "user.name=t", "commit", "-m", "dev commit"], { stdio: "pipe" });
+  let branchPush = true;
+  try {
+    execFileSync("git", ["-C", workDir, "push", "origin", "dev"], { stdio: "pipe" });
+  } catch {
+    branchPush = false;
+  }
+  check("推送 dev 分支", branchPush);
+
+  const branches = await (await fetch(`${BASE}/api/repos/${repoId}/branches`, { headers: authH })).json();
+  check(
+    "分支列表包含 main 和 dev",
+    branches.branches.includes("main") && branches.branches.includes("dev"),
+    JSON.stringify(branches),
+  );
+
+  const devCommits = await (
+    await fetch(`${BASE}/api/repos/${repoId}/commits?ref=dev`, { headers: authH })
+  ).json();
+  check(
+    "按分支查提交（dev 独有 commit）",
+    devCommits.commits.some((c) => c.message === "dev commit"),
+    JSON.stringify(devCommits.commits),
+  );
+
+  const devTree = await (
+    await fetch(`${BASE}/api/repos/${repoId}/tree?ref=dev`, { headers: authH })
+  ).json();
+  const mainTree = await (
+    await fetch(`${BASE}/api/repos/${repoId}/tree?ref=main`, { headers: authH })
+  ).json();
+  check(
+    "按分支查文件树（dev 有 dev-only.md，main 没有）",
+    devTree.tree.some((f) => f && f.path === "dev-only.md") &&
+      !mainTree.tree.some((f) => f && f.path === "dev-only.md"),
+  );
+
   let noAuthOk = false;
   try {
     execFileSync("git", ["clone", `${BASE}/git/team/demo.git`, workDir + "-x"], { stdio: "pipe" });

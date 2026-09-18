@@ -19,8 +19,9 @@ export function sendTo(ws: WebSocket, event: WsServerEvent): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
 }
 
-export function broadcastToChannel(db: Db, channelId: string, event: WsServerEvent): void {
+export function broadcastToChannel(db: Db, channelId: string, event: WsServerEvent, excludeUserId?: string): void {
   for (const uid of channelMembers(db, channelId)) {
+    if (excludeUserId && uid === excludeUserId) continue;
     for (const ws of online.get(uid) ?? []) sendTo(ws, event);
   }
 }

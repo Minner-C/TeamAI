@@ -60,6 +60,10 @@ export default function ImPage() {
   const [active, setActive] = useState<ChannelView | null>(null);
   const [messages, setMessages] = useState<ImMessage[]>([]);
   const [input, setInput] = useState("");
+  const [typingUsers, setTypingUsers] = useState<Record<string, number>>({});
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const typingSentAt = useRef(0);
   const [users, setUsers] = useState<SessionUser[]>([]);
   const [models, setModels] = useState<Array<{ model: string }>>([]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -80,6 +84,12 @@ export default function ImPage() {
     api.listModels().then(setModels).catch(() => {});
     const off = api.connectIm((ev) => {
       if (ev.type === "message:new") {
+        setTypingUsers((prev) => {
+          if (!ev.message.senderUserId || !(ev.message.senderUserId in prev)) return prev;
+          const next = { ...prev };
+          delete next[ev.message.senderUserId];
+          return next;
+        });
         if (ev.message.channelId === activeRef.current) {
           setMessages((prev) =>
             prev.some((m) => m.id === ev.message.id) ? prev : [...prev, ev.message],
@@ -87,9 +97,20 @@ export default function ImPage() {
         }
         refreshChannels();
       }
+      if (ev.type === "typing" && ev.channelId === activeRef.current && ev.userId !== user?.id) {
+        setTypingUsers((prev) => ({ ...prev, [ev.userId]: Date.now() + 3500 }));
+        setTimeout(() => {
+          setTypingUsers((prev) => {
+            if ((prev[ev.userId] ?? 0) > Date.now()) return prev;
+            const next = { ...prev };
+            delete next[ev.userId];
+            return next;
+          });
+        }, 3600);
+      }
     });
     return off;
-  }, [refreshChannels]);
+  }, [refreshChannels, user?.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -98,12 +119,37 @@ export default function ImPage() {
   async function openChannel(ch: ChannelView) {
     setActive(ch);
     activeRef.current = ch.id;
+    setTypingUsers({});
     try {
-      setMessages(await api.listMessages(ch.id));
+      const msgs = await api.listMessages(ch.id);
+      setMessages(msgs);
+      setHasMore(msgs.length >= 50);
       await api.markRead(ch.id);
       refreshChannels();
     } catch (e) {
       message.error(e instanceof Error ? e.message : "加载失败");
+    }
+  }
+
+  async function loadEarlier() {
+    if (!active || !messages.length || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const older = await api.listMessages(active.id, messages[0].createdAt);
+      setMessages((prev) => [...older.filter((o) => !prev.some((m) => m.id === o.id)), ...prev]);
+      setHasMore(older.length >= 50);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "加载失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function onInputChange(value: string) {
+    setInput(value);
+    if (active && value && Date.now() - typingSentAt.current > 2000) {
+      typingSentAt.current = Date.now();
+      api.sendTyping(active.id);
     }
   }
 
@@ -238,6 +284,13 @@ export default function ImPage() {
             </div>
 
             <div className="im-messages">
+              {hasMore && (
+                <div style={{ textAlign: "center", paddingBottom: 8 }}>
+                  <Button size="small" type="link" loading={loadingMore} onClick={() => void loadEarlier()}>
+                    加载更早消息
+                  </Button>
+                </div>
+              )}
               {messages.map((m) => (
                 <div
                   key={m.id}
@@ -266,6 +319,15 @@ export default function ImPage() {
               <div ref={bottomRef} />
             </div>
 
+            {Object.keys(typingUsers).length > 0 && (
+              <div style={{ fontSize: 12, color: "#8c8c8c", padding: "2px 4px 6px" }}>
+                {Object.keys(typingUsers)
+                  .map((uid) => users.find((u) => u.id === uid)?.name ?? "对方")
+                  .join("、")}{" "}
+                正在输入…
+              </div>
+            )}
+
             <Space.Compact style={{ width: "100%" }}>
               <label className="ant-btn" style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
                 <PaperClipOutlined />
@@ -273,7 +335,7 @@ export default function ImPage() {
               </label>
               <Input.TextArea
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => onInputChange(e.target.value)}
                 onPressEnter={(e) => {
                   if (!e.shiftKey) {
                     e.preventDefault();
