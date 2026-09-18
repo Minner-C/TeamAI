@@ -15,6 +15,7 @@ function toSharedRole(row: AiRoleRow): AiRole {
     personaPrompt: row.persona_prompt,
     model: row.model,
     trigger: row.trigger_kind as AiRole["trigger"],
+    keywords: row.trigger_keywords ? row.trigger_keywords.split(",").filter(Boolean) : [],
     enabled: !!row.enabled,
   };
 }
@@ -24,10 +25,12 @@ export function shouldTrigger(role: AiRole, message: Message): boolean {
   switch (role.trigger) {
     case "mention":
       return message.content.includes(`@${role.name}`);
-    case "keyword":
-      return false;
+    case "keyword": {
+      const text = message.content.toLowerCase();
+      return role.keywords.some((k) => k.trim() && text.includes(k.trim().toLowerCase()));
+    }
     case "auto":
-      return false;
+      return true;
   }
 }
 

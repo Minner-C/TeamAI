@@ -28,6 +28,7 @@ export async function envRoutes(app: FastifyInstance) {
         name: body.name,
         repoId: body.repoId,
         userId: req.user!.id,
+        isAdmin: req.user!.role === "admin",
         runCmd: body.runCmd,
       });
       recordAudit(app.db, {

@@ -43,6 +43,8 @@ export interface AiRoleView {
   name: string;
   model: string;
   persona_prompt: string;
+  trigger_kind: "mention" | "keyword" | "auto";
+  trigger_keywords: string;
   enabled: number;
 }
 
@@ -292,12 +294,27 @@ export const api = {
     return ((await res.json()) as { roles: AiRoleView[] }).roles;
   },
 
-  async createRole(channelId: string, input: { name: string; model: string; personaPrompt?: string }) {
+  async createRole(
+    channelId: string,
+    input: { name: string; model: string; personaPrompt?: string; trigger?: string; keywords?: string[] },
+  ) {
     const res = await directFetch(`/api/channels/${channelId}/roles`, {
       method: "POST",
       body: JSON.stringify(input),
     });
     if (!res.ok) throw new Error(`创建角色失败：${await res.text()}`);
+    return res.json();
+  },
+
+  async updateRole(
+    roleId: string,
+    patch: { name?: string; personaPrompt?: string; model?: string; trigger?: string; keywords?: string[]; enabled?: boolean },
+  ): Promise<AiRoleView> {
+    const res = await directFetch(`/api/roles/${roleId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error(`更新角色失败：${await res.text()}`);
     return res.json();
   },
 

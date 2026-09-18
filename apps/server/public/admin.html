@@ -515,19 +515,26 @@ async function renderRepos(c) {
   const { repos } = await req("/api/repos");
   const rows = repos.map((r) => {
     const url = `${location.origin}/git/${r.group}/${r.name}.git`;
+    const priv = r.visibility === "private";
     return `<tr>
       <td><b>${esc(r.group)}/${esc(r.name)}</b></td>
+      <td><span class="tag ${priv ? "off" : "on"}">${priv ? "私有" : "团队"}</span></td>
+      <td>${r.memberCount ?? 1} 人</td>
       <td>${fmtTime(r.createdAt)}</td>
       <td class="mono">${esc(url)} <span class="copy" data-copy="${esc(url)}">复制</span></td>
-      <td><button class="btn sm danger" data-del="${r.id}" data-name="${esc(r.group)}/${esc(r.name)}">删除</button></td>
+      <td>
+        <button class="btn sm ghost" data-members="${r.id}" data-name="${esc(r.group)}/${esc(r.name)}">成员</button>
+        <button class="btn sm ghost" data-vis="${r.id}" data-now="${r.visibility}">${priv ? "设为团队可见" : "设为私有"}</button>
+        <button class="btn sm danger" data-del="${r.id}" data-name="${esc(r.group)}/${esc(r.name)}">删除</button>
+      </td>
     </tr>`;
   }).join("");
   c.innerHTML = `
-    ${pageHead("Git 仓库", "内置 Git 托管，smart HTTP 协议，凭 token 克隆/推送")}
+    ${pageHead("Git 仓库", "内置 Git 托管，smart HTTP 协议，凭 token 克隆/推送；私有仓库仅成员可见")}
     <div class="bar"><button class="btn" id="add-repo">新建仓库</button></div>
     <div class="card"><h3>仓库列表 <span class="sub">${repos.length} 个</span></h3>
-      <table><thead><tr><th>仓库</th><th>创建时间</th><th>地址</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="empty">暂无仓库，点击右上角「新建仓库」创建</td></tr>'}</tbody></table>
+      <table><thead><tr><th>仓库</th><th>可见性</th><th>成员</th><th>创建时间</th><th>地址</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无仓库，点击右上角「新建仓库」创建</td></tr>'}</tbody></table>
       <div class="hint">克隆凭证格式：<span class="mono">http://&lt;邮箱&gt;:&lt;token&gt;@${location.host}/git/&lt;分组&gt;/&lt;仓库名&gt;.git</span>，token 可在客户端登录后获取。</div>
     </div>`;
   $("#add-repo").onclick = () => {
@@ -536,12 +543,16 @@ async function renderRepos(c) {
       okText: "创建",
       body:
         field("分组", '<input id="m-r-group" value="default" />') +
-        field("仓库名", '<input id="m-r-name" placeholder="my-project" />'),
+        field("仓库名", '<input id="m-r-name" placeholder="my-project" />') +
+        field("可见性", `<select id="m-r-vis">
+          <option value="team">团队可见（全部成员可读写）</option>
+          <option value="private">私有（仅仓库成员）</option>
+        </select>`),
       onOk: async (b) => {
         const group = $("#m-r-group", b).value.trim();
         const name = $("#m-r-name", b).value.trim();
         if (!group || !name) { toast("分组与仓库名均必填", "err"); return false; }
-        await req("/api/repos", { method: "POST", body: JSON.stringify({ group, name }) });
+        await req("/api/repos", { method: "POST", body: JSON.stringify({ group, name, visibility: $("#m-r-vis", b).value }) });
         toast("仓库已创建");
         renderTab();
       },
@@ -549,6 +560,64 @@ async function renderRepos(c) {
   };
   $$("[data-copy]", c).forEach((el) => (el.onclick = () => {
     navigator.clipboard?.writeText(el.dataset.copy).then(() => toast("地址已复制")).catch(() => toast("复制失败", "err"));
+  }));
+  $$("[data-vis]", c).forEach((btn) => (btn.onclick = async () => {
+    const next = btn.dataset.now === "private" ? "team" : "private";
+    try {
+      await req(`/api/repos/${btn.dataset.vis}/visibility`, { method: "PATCH", body: JSON.stringify({ visibility: next }) });
+      toast(next === "private" ? "已设为私有，仅仓库成员可见" : "已设为团队可见");
+      renderTab();
+    } catch (e) { toast(e.message, "err", 3600); }
+  }));
+  $$("[data-members]", c).forEach((btn) => (btn.onclick = async () => {
+    const repoId = btn.dataset.members;
+    try {
+      const [{ members }, { users }] = await Promise.all([
+        req(`/api/repos/${repoId}/members`),
+        req("/api/users"),
+      ]);
+      const memberIds = new Set(members.map((m) => m.userId));
+      const candidates = users.filter((u) => !memberIds.has(u.id));
+      const memberRows = members.map((m) => `
+        <tr><td><b>${esc(m.name)}</b></td><td>${esc(m.email)}</td><td><span class="tag ${m.role === "owner" ? "on" : ""}">${m.role === "owner" ? "拥有者" : "成员"}</span></td>
+        <td>${m.role === "owner" ? "" : `<button class="btn sm danger" data-rm-member="${m.userId}">移除</button>`}</td></tr>`).join("");
+      openModal({
+        title: `仓库成员：${btn.dataset.name}`,
+        okText: "关闭",
+        body: `
+          <table style="margin-bottom:14px"><tbody>${memberRows}</tbody></table>
+          ${candidates.length ? field("添加成员", `<select id="m-add-member">
+            ${candidates.map((u) => `<option value="${u.id}">${esc(u.name)}（${esc(u.email)}）</option>`).join("")}
+          </select>`) : '<p style="color:var(--text2);font-size:12px">全部成员都已在仓库中</p>'}
+          <div class="hint">仓库成员可读写该仓库（含私有仓库）；移除后立即失去访问权限。</div>`,
+        onOk: () => renderTab(),
+      });
+      const addSel = $("#m-add-member");
+      if (addSel) {
+        const foot = $(".m-foot", $("#modal-root"));
+        const addBtn = document.createElement("button");
+        addBtn.className = "btn";
+        addBtn.textContent = "添加所选成员";
+        addBtn.onclick = async () => {
+          addBtn.disabled = true;
+          try {
+            await req(`/api/repos/${repoId}/members`, { method: "POST", body: JSON.stringify({ userId: addSel.value }) });
+            toast("成员已添加");
+            $("#modal-root").innerHTML = "";
+            btn.onclick();
+          } catch (e) { toast(e.message, "err", 3600); addBtn.disabled = false; }
+        };
+        foot.prepend(addBtn);
+      }
+      $$("[data-rm-member]", $("#modal-root")).forEach((rm) => (rm.onclick = async () => {
+        try {
+          await req(`/api/repos/${repoId}/members/${rm.dataset.rmMember}`, { method: "DELETE" });
+          toast("成员已移除");
+          $("#modal-root").innerHTML = "";
+          btn.onclick();
+        } catch (e) { toast(e.message, "err", 3600); }
+      }));
+    } catch (e) { toast(e.message, "err", 3600); }
   }));
   $$("[data-del]", c).forEach((btn) => (btn.onclick = () =>
     confirmBox("删除仓库", `删除「${btn.dataset.name}」？磁盘数据将一并删除，不可恢复。`, async () => {
@@ -646,6 +715,7 @@ async function renderAudit(c) {
     "provider.disable": "停用 Provider", "provider.delete": "删除 Provider", "provider.update_models": "更新模型列表",
     "key.create": "签发 Key", "key.revoke": "吊销 Key",
     "repo.create": "创建仓库", "repo.delete": "删除仓库",
+    "repo.visibility": "修改仓库可见性", "repo.member_add": "添加仓库成员", "repo.member_remove": "移除仓库成员",
     "env.create": "创建环境", "env.start": "启动环境", "env.stop": "停止环境", "env.delete": "删除环境",
   };
   const rows = logs.map((l) => `

@@ -13,6 +13,14 @@ export interface RepoRow {
   grp: string;
   owner_id: string;
   path: string;
+  visibility: string;
+  created_at: number;
+}
+
+export interface RepoMemberRow {
+  repo_id: string;
+  user_id: string;
+  role: string;
   created_at: number;
 }
 
@@ -26,8 +34,43 @@ export function repoDiskPath(reposDir: string, grp: string, name: string): strin
   return path.join(reposDir, grp, `${name}.git`);
 }
 
-export function listRepos(db: Db): RepoRow[] {
-  return db.prepare("SELECT * FROM repos ORDER BY created_at DESC").all() as unknown as RepoRow[];
+export function listRepos(db: Db, userId?: string, isAdmin = false): RepoRow[] {
+  const all = db.prepare("SELECT * FROM repos ORDER BY created_at DESC").all() as unknown as RepoRow[];
+  if (isAdmin || !userId) return all;
+  return all.filter((r) => canAccessRepo(db, r, userId, false));
+}
+
+export function isRepoMember(db: Db, repoId: string, userId: string): boolean {
+  return !!db.prepare("SELECT 1 FROM repo_members WHERE repo_id = ? AND user_id = ?").get(repoId, userId);
+}
+
+export function canAccessRepo(db: Db, row: RepoRow, userId: string, isAdmin: boolean): boolean {
+  if (isAdmin || row.visibility !== "private") return true;
+  return row.owner_id === userId || isRepoMember(db, row.id, userId);
+}
+
+export function canManageRepo(row: RepoRow, userId: string, isAdmin: boolean): boolean {
+  return isAdmin || row.owner_id === userId;
+}
+
+export function listRepoMembers(db: Db, repoId: string): RepoMemberRow[] {
+  return db
+    .prepare("SELECT * FROM repo_members WHERE repo_id = ? ORDER BY created_at ASC")
+    .all(repoId) as unknown as RepoMemberRow[];
+}
+
+export function addRepoMember(db: Db, repoId: string, userId: string, role = "member"): void {
+  db.prepare(
+    "INSERT INTO repo_members (repo_id, user_id, role, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(repo_id, user_id) DO UPDATE SET role = excluded.role",
+  ).run(repoId, userId, role, Date.now());
+}
+
+export function removeRepoMember(db: Db, repoId: string, userId: string): boolean {
+  return db.prepare("DELETE FROM repo_members WHERE repo_id = ? AND user_id = ? AND role != 'owner'").run(repoId, userId).changes > 0;
+}
+
+export function setRepoVisibility(db: Db, repoId: string, visibility: "team" | "private"): void {
+  db.prepare("UPDATE repos SET visibility = ? WHERE id = ?").run(visibility, repoId);
 }
 
 export function findRepo(db: Db, grp: string, name: string): RepoRow | undefined {
@@ -39,11 +82,12 @@ export function findRepo(db: Db, grp: string, name: string): RepoRow | undefined
 export async function createRepo(
   db: Db,
   reposDir: string,
-  input: { name: string; grp: string; ownerId: string },
+  input: { name: string; grp: string; ownerId: string; visibility?: string },
 ): Promise<RepoRow> {
   if (!validRepoPart(input.name) || !validRepoPart(input.grp)) {
     throw new Error("invalid repo name or group");
   }
+  const visibility = input.visibility === "private" ? "private" : "team";
   if (findRepo(db, input.grp, input.name)) throw new Error("repo already exists");
   const diskPath = repoDiskPath(reposDir, input.grp, input.name);
   fs.mkdirSync(path.dirname(diskPath), { recursive: true });
@@ -55,11 +99,13 @@ export async function createRepo(
     grp: input.grp,
     owner_id: input.ownerId,
     path: diskPath,
+    visibility,
     created_at: Date.now(),
   };
   db.prepare(
-    "INSERT INTO repos (id, name, grp, owner_id, path, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(row.id, row.name, row.grp, row.owner_id, row.path, row.created_at);
+    "INSERT INTO repos (id, name, grp, owner_id, path, visibility, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(row.id, row.name, row.grp, row.owner_id, row.path, row.visibility, row.created_at);
+  addRepoMember(db, row.id, row.owner_id, "owner");
   return row;
 }
 
@@ -67,6 +113,7 @@ export async function deleteRepo(db: Db, id: string): Promise<boolean> {
   const row = db.prepare("SELECT * FROM repos WHERE id = ?").get(id) as RepoRow | undefined;
   if (!row) return false;
   db.prepare("DELETE FROM repos WHERE id = ?").run(id);
+  db.prepare("DELETE FROM repo_members WHERE repo_id = ?").run(id);
   fs.rmSync(row.path, { recursive: true, force: true });
   return true;
 }

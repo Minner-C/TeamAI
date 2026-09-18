@@ -12,6 +12,7 @@ import {
   listRoles,
   markRead,
   toMessageView,
+  updateRole,
 } from "./store.js";
 import { broadcastToChannel } from "./hub.js";
 import { triggerRolesForMessage } from "../airole/engine.js";
@@ -89,17 +90,53 @@ export async function imRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     if (!isMember(app.db, id, req.user!.id)) return reply.code(403).send({ error: "not a member" });
     const body = req.body as
-      | { name?: string; personaPrompt?: string; model?: string; trigger?: string }
+      | { name?: string; personaPrompt?: string; model?: string; trigger?: string; keywords?: string[] }
       | undefined;
     if (!body?.name || !body.model) return reply.code(400).send({ error: "name and model required" });
+    const trigger = body.trigger ?? "mention";
+    if (!["mention", "keyword", "auto"].includes(trigger)) {
+      return reply.code(400).send({ error: "trigger must be mention, keyword or auto" });
+    }
+    const keywords = (body.keywords ?? []).map((k) => k.trim()).filter(Boolean);
+    if (trigger === "keyword" && !keywords.length) {
+      return reply.code(400).send({ error: "keyword trigger requires at least one keyword" });
+    }
     const row = createRole(app.db, {
       channelId: id,
       name: body.name,
       personaPrompt: body.personaPrompt ?? "",
       model: body.model,
-      trigger: body.trigger,
+      trigger,
+      keywords,
     });
     return reply.code(201).send(row);
+  });
+
+  app.patch("/roles/:roleId", { preHandler: requireUser }, async (req, reply) => {
+    const { roleId } = req.params as { roleId: string };
+    const role = app.db.prepare("SELECT * FROM ai_roles WHERE id = ?").get(roleId) as
+      | { id: string; channel_id: string }
+      | undefined;
+    if (!role) return reply.code(404).send({ error: "not found" });
+    if (!isMember(app.db, role.channel_id, req.user!.id)) {
+      return reply.code(403).send({ error: "not a member" });
+    }
+    const body = req.body as
+      | { name?: string; personaPrompt?: string; model?: string; trigger?: string; keywords?: string[]; enabled?: boolean }
+      | undefined;
+    if (body?.trigger !== undefined && !["mention", "keyword", "auto"].includes(body.trigger)) {
+      return reply.code(400).send({ error: "trigger must be mention, keyword or auto" });
+    }
+    const patch = {
+      name: body?.name,
+      personaPrompt: body?.personaPrompt,
+      model: body?.model,
+      trigger: body?.trigger,
+      keywords: body?.keywords?.map((k) => k.trim()).filter(Boolean),
+      enabled: body?.enabled,
+    };
+    if (!updateRole(app.db, roleId, patch)) return reply.code(400).send({ error: "nothing to update" });
+    return app.db.prepare("SELECT * FROM ai_roles WHERE id = ?").get(roleId);
   });
 
   app.delete("/roles/:roleId", { preHandler: requireUser }, async (req, reply) => {

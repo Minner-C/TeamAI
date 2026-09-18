@@ -166,16 +166,33 @@ export default function ImPage() {
     }
   }
 
-  async function onCreateRole(values: { name: string; model: string; personaPrompt?: string }) {
+  async function onCreateRole(values: {
+    name: string;
+    model: string;
+    personaPrompt?: string;
+    trigger?: string;
+    keywords?: string[];
+  }) {
     if (!active) return;
     try {
       await api.createRole(active.id, values);
       setRoles(await api.listRoles(active.id));
       roleForm.resetFields();
-      message.success(`AI 角色「${values.name}」已加入，@它即可触发回复`);
+      const hint =
+        values.trigger === "keyword"
+          ? "消息命中关键词即触发回复"
+          : values.trigger === "auto"
+            ? "将自动回复群内每条消息"
+            : "@它即可触发回复";
+      message.success(`AI 角色「${values.name}」已加入，${hint}`);
     } catch (e) {
       message.error(e instanceof Error ? e.message : "创建失败");
     }
+  }
+
+  async function onToggleRole(r: AiRoleView) {
+    await api.updateRole(r.id, { enabled: !r.enabled });
+    if (active) setRoles(await api.listRoles(active.id));
   }
 
   return (
@@ -325,6 +342,9 @@ export default function ImPage() {
           renderItem={(r) => (
             <List.Item
               actions={[
+                <Button key="toggle" size="small" type="text" onClick={() => onToggleRole(r)}>
+                  {r.enabled ? "停用" : "启用"}
+                </Button>,
                 <Popconfirm key="del" title="移除该角色？" onConfirm={() => api.deleteRole(r.id).then(openRoles)}>
                   <Button size="small" danger type="text">
                     移除
@@ -334,8 +354,17 @@ export default function ImPage() {
             >
               <Space>
                 <Tag color="purple">AI</Tag>
-                <Typography.Text strong>{r.name}</Typography.Text>
+                <Typography.Text strong delete={!r.enabled}>
+                  {r.name}
+                </Typography.Text>
                 <Typography.Text type="secondary">{r.model}</Typography.Text>
+                <Tag>
+                  {r.trigger_kind === "keyword"
+                    ? `关键词：${r.trigger_keywords}`
+                    : r.trigger_kind === "auto"
+                      ? "自动回复"
+                      : "@提及"}
+                </Tag>
                 <Popover content={r.persona_prompt || "无人设"}>
                   <Typography.Link>人设</Typography.Link>
                 </Popover>
@@ -360,6 +389,24 @@ export default function ImPage() {
               />
             </Form.Item>
           </Space.Compact>
+          <Form.Item name="trigger" initialValue="mention">
+            <Select
+              options={[
+                { value: "mention", label: "触发方式：@提及角色名" },
+                { value: "keyword", label: "触发方式：命中关键词" },
+                { value: "auto", label: "触发方式：自动回复每条消息" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(a, b) => a.trigger !== b.trigger}>
+            {({ getFieldValue }) =>
+              getFieldValue("trigger") === "keyword" ? (
+                <Form.Item name="keywords" rules={[{ required: true, message: "请输入至少一个关键词" }]}>
+                  <Select mode="tags" placeholder="关键词，回车添加多个" tokenSeparators={[",", "，", " "]} />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
           <Form.Item name="personaPrompt">
             <Input.TextArea placeholder="人设 prompt，如：你是资深前端工程师，回答简洁专业" autoSize={{ minRows: 2 }} />
           </Form.Item>

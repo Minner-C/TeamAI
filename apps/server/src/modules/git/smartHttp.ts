@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { spawn } from "node:child_process";
 import { verifyToken } from "../core/crypto.js";
-import { findRepo, validRepoPart } from "./store.js";
+import { canAccessRepo, findRepo, validRepoPart } from "./store.js";
 
 function authenticate(app: FastifyInstance, req: FastifyRequest): string | null {
   const h = req.headers.authorization ?? "";
@@ -50,8 +50,15 @@ async function handleGit(app: FastifyInstance, req: FastifyRequest, reply: Fasti
   if (!validRepoPart(grp) || !validRepoPart(name)) {
     return reply.code(404).send({ error: "repo not found" });
   }
-  if (!findRepo(app.db, grp, name)) {
+  const repo = findRepo(app.db, grp, name);
+  if (!repo) {
     return reply.code(404).send({ error: "repo not found" });
+  }
+  const user = app.db.prepare("SELECT role FROM users WHERE id = ?").get(uid) as
+    | { role: string }
+    | undefined;
+  if (!user || !canAccessRepo(app.db, repo, uid, user.role === "admin")) {
+    return reply.code(403).send({ error: "no access to this repo" });
   }
 
   const query = req.url.split("?")[1] ?? "";

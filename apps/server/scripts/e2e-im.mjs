@@ -200,6 +200,88 @@ try {
   const usage = await (await fetch(`${BASE}/api/usage/summary`, { headers: authH })).json();
   check("AI 角色调用计入用量", usage.byModel["im-model"]?.tokensIn === 50, JSON.stringify(usage.byModel));
 
+  const badTrigger = await fetch(`${BASE}/api/channels/${channel.id}/roles`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ name: "坏角色", model: "im-model", trigger: "sometimes" }),
+  });
+  check("非法触发方式被拒", badTrigger.status === 400);
+
+  const kwNoKw = await fetch(`${BASE}/api/channels/${channel.id}/roles`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ name: "空关键词", model: "im-model", trigger: "keyword", keywords: [] }),
+  });
+  check("关键词模式缺少关键词被拒", kwNoKw.status === 400);
+
+  const kwRoleRes = await fetch(`${BASE}/api/channels/${channel.id}/roles`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ name: "报bug小助手", model: "im-model", trigger: "keyword", keywords: ["bug", "报错"] }),
+  });
+  const kwRole = await kwRoleRes.json();
+  check("创建关键词触发角色", kwRoleRes.status === 201 && kwRole.trigger_keywords === "bug,报错", JSON.stringify(kwRole));
+
+  await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
+    method: "POST",
+    headers: memberH,
+    body: JSON.stringify({ content: "今天天气不错" }),
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  const noKwEvents = memberWs.events.filter((e) => e.message?.senderRoleId === kwRole.id);
+  check("无关键词时关键词角色不触发", noKwEvents.length === 0, JSON.stringify(noKwEvents));
+
+  await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
+    method: "POST",
+    headers: memberH,
+    body: JSON.stringify({ content: "线上出现一个 BUG，帮忙看看" }),
+  });
+  const kwReply = await memberWs.waitFor(
+    (e) => e.type === "message:new" && e.message.senderRoleId === kwRole.id,
+    10000,
+  );
+  check("命中关键词（大小写不敏感）自动回复", kwReply.message.senderName === "报bug小助手");
+
+  const patchRes = await fetch(`${BASE}/api/roles/${kwRole.id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ enabled: false }),
+  });
+  check("PATCH 停用角色", patchRes.status === 200 && (await patchRes.json()).enabled === 0);
+
+  await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
+    method: "POST",
+    headers: memberH,
+    body: JSON.stringify({ content: "又一个 bug 来了" }),
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  const disabledEvents = memberWs.events.filter(
+    (e) => e.message?.senderRoleId === kwRole.id && e.message.content.includes("又一个"),
+  );
+  check("停用后角色不再触发", disabledEvents.length === 0);
+
+  const autoRoleRes = await fetch(`${BASE}/api/channels/${channel.id}/roles`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ name: "碎碎念", model: "im-model", trigger: "auto", personaPrompt: "每条消息都要插话。" }),
+  });
+  const autoRole = await autoRoleRes.json();
+  check("创建自动触发角色", autoRoleRes.status === 201 && autoRole.trigger_kind === "auto");
+
+  await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
+    method: "POST",
+    headers: memberH,
+    body: JSON.stringify({ content: "随便说句话" }),
+  });
+  const autoReply = await memberWs.waitFor(
+    (e) => e.type === "message:new" && e.message.senderRoleId === autoRole.id,
+    10000,
+  );
+  check("自动角色对任意消息回复", autoReply.message.senderName === "碎碎念");
+
+  const roleEvents = memberWs.events.filter((e) => e.message?.senderRoleId === autoRole.id);
+  check("AI 角色的消息不会触发其它角色（防循环）", roleEvents.length === 1, `got ${roleEvents.length}`);
+
   const outsider = await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}x` },

@@ -89,6 +89,7 @@ export interface AiRole {
   personaPrompt: string;
   model: string;
   trigger: "mention" | "keyword" | "auto";
+  keywords: string[];
   enabled: boolean;
 }
 

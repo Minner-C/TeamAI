@@ -28,6 +28,7 @@ export interface AiRoleRow {
   persona_prompt: string;
   model: string;
   trigger_kind: string;
+  trigger_keywords: string;
   enabled: number;
   created_at: number;
 }
@@ -219,7 +220,7 @@ export function listRoles(db: Db, channelId: string): AiRoleRow[] {
 
 export function createRole(
   db: Db,
-  input: { channelId: string; name: string; personaPrompt: string; model: string; trigger?: string },
+  input: { channelId: string; name: string; personaPrompt: string; model: string; trigger?: string; keywords?: string[] },
 ): AiRoleRow {
   const row: AiRoleRow = {
     id: randomId(),
@@ -228,13 +229,32 @@ export function createRole(
     persona_prompt: input.personaPrompt,
     model: input.model,
     trigger_kind: input.trigger ?? "mention",
+    trigger_keywords: (input.keywords ?? []).join(","),
     enabled: 1,
     created_at: Date.now(),
   };
   db.prepare(
-    "INSERT INTO ai_roles (id, channel_id, name, persona_prompt, model, trigger_kind, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-  ).run(row.id, row.channel_id, row.name, row.persona_prompt, row.model, row.trigger_kind, row.created_at);
+    "INSERT INTO ai_roles (id, channel_id, name, persona_prompt, model, trigger_kind, trigger_keywords, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
+  ).run(row.id, row.channel_id, row.name, row.persona_prompt, row.model, row.trigger_kind, row.trigger_keywords, row.created_at);
   return row;
+}
+
+export function updateRole(
+  db: Db,
+  id: string,
+  patch: { name?: string; personaPrompt?: string; model?: string; trigger?: string; keywords?: string[]; enabled?: boolean },
+): boolean {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (patch.name !== undefined) { sets.push("name = ?"); vals.push(patch.name); }
+  if (patch.personaPrompt !== undefined) { sets.push("persona_prompt = ?"); vals.push(patch.personaPrompt); }
+  if (patch.model !== undefined) { sets.push("model = ?"); vals.push(patch.model); }
+  if (patch.trigger !== undefined) { sets.push("trigger_kind = ?"); vals.push(patch.trigger); }
+  if (patch.keywords !== undefined) { sets.push("trigger_keywords = ?"); vals.push(patch.keywords.join(",")); }
+  if (patch.enabled !== undefined) { sets.push("enabled = ?"); vals.push(patch.enabled ? 1 : 0); }
+  if (!sets.length) return false;
+  vals.push(id);
+  return db.prepare(`UPDATE ai_roles SET ${sets.join(", ")} WHERE id = ?`).run(...(vals as string[])).changes > 0;
 }
 
 export function deleteRole(db: Db, id: string): boolean {

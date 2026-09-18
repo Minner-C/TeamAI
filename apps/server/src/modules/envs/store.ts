@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
-import type { RepoRow } from "../git/store.js";
+import { canAccessRepo, type RepoRow } from "../git/store.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -76,7 +76,7 @@ export function listEnvs(db: Db, userId?: string): EnvRow[] {
 export async function createEnv(
   db: Db,
   dataDir: string,
-  input: { name: string; repoId?: string; userId: string; runCmd?: string },
+  input: { name: string; repoId?: string; userId: string; isAdmin?: boolean; runCmd?: string },
 ): Promise<EnvRow> {
   const name = input.name.trim();
   if (!/^[\u4e00-\u9fa5a-zA-Z0-9._ -]{1,64}$/.test(name)) throw new Error("invalid env name");
@@ -88,6 +88,9 @@ export async function createEnv(
   if (input.repoId) {
     const repo = db.prepare("SELECT * FROM repos WHERE id = ?").get(input.repoId) as RepoRow | undefined;
     if (!repo) throw new Error("repo not found");
+    if (!canAccessRepo(db, repo, input.userId, input.isAdmin ?? false)) {
+      throw new Error("no access to this repo");
+    }
     repoId = repo.id;
     fs.rmSync(workdir, { recursive: true, force: true });
     await execFileAsync("git", ["clone", repo.path, workdir]);

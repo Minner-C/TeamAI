@@ -55,8 +55,16 @@ CREATE TABLE IF NOT EXISTS repos (
   grp TEXT NOT NULL DEFAULT 'default',
   owner_id TEXT NOT NULL,
   path TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'team',
   created_at INTEGER NOT NULL,
   UNIQUE(grp, name)
+);
+CREATE TABLE IF NOT EXISTS repo_members (
+  repo_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (repo_id, user_id)
 );
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -99,6 +107,7 @@ CREATE TABLE IF NOT EXISTS ai_roles (
   persona_prompt TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL,
   trigger_kind TEXT NOT NULL DEFAULT 'mention',
+  trigger_keywords TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL
 );
@@ -140,8 +149,18 @@ export function openDb(config: ServerConfig): Db {
   const db = new DatabaseSync(path.join(config.dataDir, "teamai.db"));
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(SCHEMA);
+  migrate(db);
   seedAdmin(db);
   return db;
+}
+
+function migrate(db: Db) {
+  const addColumn = (table: string, column: string, ddl: string) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  };
+  addColumn("repos", "visibility", "visibility TEXT NOT NULL DEFAULT 'team'");
+  addColumn("ai_roles", "trigger_keywords", "trigger_keywords TEXT NOT NULL DEFAULT ''");
 }
 
 function seedAdmin(db: Db) {
