@@ -8,7 +8,28 @@
     "dev": "node scripts/dev.mjs",
     "build": "vite build && node scripts/build-electron.mjs",
     "build:electron": "node scripts/build-electron.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:mac": "npm run build && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.teamai.client",
+    "productName": "TeamAI",
+    "directories": { "output": "release" },
+    "files": ["dist", "dist-electron", "package.json"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "TeamAI-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "TeamAI"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "artifactName": "TeamAI-${version}.${ext}"
+    }
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
@@ -26,6 +47,7 @@
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"

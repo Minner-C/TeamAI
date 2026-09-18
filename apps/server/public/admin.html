@@ -3,131 +3,277 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>TeamAI 服务端控制台</title>
+<title>TeamAI 控制台</title>
 <style>
+  :root {
+    --accent: #6366f1; --accent2: #8b5cf6;
+    --bg: #f4f6fb; --card: #ffffff; --line: #e8eaf2;
+    --text: #1e2430; --text2: #7a8194;
+    --ok: #16a34a; --err: #dc2626; --warn: #d97706;
+    --sidebar: #111627; --sidebar-on: rgba(99,102,241,.16);
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(30,36,48,.06), 0 4px 14px rgba(30,36,48,.05);
+  }
   * { box-sizing: border-box; margin: 0; }
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; }
-  .login-wrap { height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .card { background: #fff; border-radius: 10px; padding: 28px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-  .login-card { width: 360px; }
-  h1 { font-size: 20px; text-align: center; margin-bottom: 20px; }
-  input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; margin-bottom: 10px; }
-  button { padding: 8px 16px; border: none; border-radius: 6px; background: #1677ff; color: #fff; font-size: 14px; cursor: pointer; }
-  button.ghost { background: #fff; color: #1677ff; border: 1px solid #1677ff; }
-  button.danger { background: #ff4d4f; }
-  button.sm { padding: 3px 10px; font-size: 12px; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .err { color: #ff4d4f; font-size: 13px; margin-top: 8px; }
-  .layout { max-width: 1100px; margin: 0 auto; padding: 20px; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-  .tabs button { background: #fff; color: #333; border: 1px solid #d9d9d9; }
-  .tabs button.on { background: #1677ff; color: #fff; border-color: #1677ff; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
-  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-  th { background: #fafafa; }
-  .stats { display: flex; gap: 16px; margin-bottom: 16px; }
-  .stat { flex: 1; background: #fff; border-radius: 8px; padding: 16px; }
-  .stat .n { font-size: 24px; font-weight: 700; color: #1677ff; }
-  .stat .t { font-size: 12px; color: #999; margin-top: 4px; }
-  .section { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .section h3 { font-size: 15px; margin-bottom: 12px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .row input, .row select { width: auto; min-width: 140px; margin-bottom: 0; }
-  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #f0f0f0; }
-  .tag.on { background: #e6f7e6; color: #389e0d; }
-  .tag.off { background: #fff1f0; color: #cf1322; }
-  .hint { font-size: 12px; color: #999; margin-top: 4px; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #cfd4e0; border-radius: 4px; }
+
+  /* ---------- 登录 ---------- */
+  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1200px 500px at 20% 0%, #e0e7ff 0%, transparent 60%),
+                radial-gradient(900px 400px at 90% 100%, #ede9fe 0%, transparent 55%), var(--bg); }
+  .login-card { width: 380px; background: var(--card); border-radius: 16px; padding: 36px 32px; box-shadow: 0 8px 40px rgba(30,36,48,.10); }
+  .login-logo { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 6px; }
+  .login-logo .mark { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 18px; }
+  .login-logo b { font-size: 20px; }
+  .login-sub { text-align: center; color: var(--text2); font-size: 13px; margin-bottom: 24px; }
+
+  /* ---------- 布局 ---------- */
+  .shell { display: flex; min-height: 100vh; }
+  .side { width: 216px; background: var(--sidebar); color: #aab1c5; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; flex-shrink: 0; }
+  .side .brand { display: flex; align-items: center; gap: 10px; padding: 20px 18px; color: #fff; font-weight: 600; font-size: 16px; }
+  .side .brand .mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .nav { padding: 8px; flex: 1; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-bottom: 2px; transition: background .15s, color .15s; }
+  .nav-item:hover { background: rgba(255,255,255,.06); color: #dfe3ee; }
+  .nav-item.on { background: var(--sidebar-on); color: #c7cbff; font-weight: 500; }
+  .nav-item .ic { width: 18px; text-align: center; }
+  .side .me { padding: 14px 18px; border-top: 1px solid rgba(255,255,255,.07); font-size: 13px; }
+  .side .me .name { color: #fff; font-weight: 500; }
+  .side .me .out { color: #8b93ab; cursor: pointer; margin-left: 8px; }
+  .side .me .out:hover { color: #fff; }
+
+  .main { flex: 1; padding: 24px 28px; max-width: calc(100vw - 216px); }
+  .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .page-sub { color: var(--text2); font-size: 13px; margin-bottom: 20px; }
+
+  /* ---------- 组件 ---------- */
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 16px; }
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h3 .sub { font-weight: 400; font-size: 12px; color: var(--text2); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .stat { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; position: relative; overflow: hidden; }
+  .stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: linear-gradient(180deg, var(--accent), var(--accent2)); }
+  .stat .n { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+  .stat .t { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+  th { color: var(--text2); font-weight: 500; font-size: 12px; }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: #f8f9fd; }
+  tbody tr:last-child td { border-bottom: none; }
+  .empty { text-align: center; color: var(--text2); padding: 32px 0; font-size: 13px; }
+
+  input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; background: #fff; color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .row .field { display: flex; flex-direction: column; gap: 4px; }
+  .row .field label { font-size: 12px; color: var(--text2); }
+  .row input, .row select { width: auto; min-width: 150px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-weight: 500; transition: opacity .15s, transform .05s; }
+  .btn:hover { opacity: .92; } .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+  .btn.ghost { background: #fff; color: var(--accent); border: 1px solid #d5d9f5; }
+  .btn.ghost:hover { background: #f5f6ff; }
+  .btn.danger { background: #fff; color: var(--err); border: 1px solid #f3c2c2; }
+  .btn.danger:hover { background: #fef2f2; }
+  .btn.sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+
+  .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 12px; background: #eef0f6; color: var(--text2); }
+  .tag.on { background: #e8f7ee; color: var(--ok); }
+  .tag.off { background: #fdecec; color: var(--err); }
+  .tag.run { background: #e8f7ee; color: var(--ok); }
+  .tag.run::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; }
+  .hint { font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.6; }
+  .copy { cursor: pointer; color: var(--accent); }
+  .copy:hover { text-decoration: underline; }
+
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(99,102,241,.25); border-top-color: var(--accent); border-radius: 50%; animation: rot .7s linear infinite; vertical-align: -2px; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .loading { padding: 40px 0; text-align: center; color: var(--text2); }
+
+  .logbox { background: #0d1220; color: #7ee787; border-radius: 10px; padding: 14px 16px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.7; max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+
+  /* ---------- Toast ---------- */
+  #toasts { position: fixed; top: 18px; right: 18px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+  .toast { min-width: 240px; max-width: 380px; background: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgba(30,36,48,.14); padding: 12px 16px; font-size: 13px;
+    display: flex; gap: 10px; align-items: flex-start; border-left: 3px solid var(--accent); animation: slidein .25s ease; }
+  .toast.ok { border-left-color: var(--ok); } .toast.err { border-left-color: var(--err); }
+  .toast .ticon { flex-shrink: 0; }
+  .toast.hide { animation: slideout .25s ease forwards; }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
+  @keyframes slideout { to { transform: translateX(30px); opacity: 0; } }
+
+  /* ---------- Modal ---------- */
+  .mask { position: fixed; inset: 0; background: rgba(15,20,35,.45); backdrop-filter: blur(2px); z-index: 900; display: flex; align-items: center; justify-content: center; animation: fadein .18s; }
+  @keyframes fadein { from { opacity: 0; } }
+  .modal { background: #fff; border-radius: 14px; width: 440px; max-width: calc(100vw - 40px); max-height: 85vh; overflow: auto; box-shadow: 0 16px 60px rgba(15,20,35,.3); animation: pop .18s ease; }
+  @keyframes pop { from { transform: scale(.96) translateY(8px); opacity: 0; } }
+  .modal .m-head { padding: 16px 20px 0; font-size: 15px; font-weight: 600; }
+  .modal .m-body { padding: 14px 20px; font-size: 13px; color: var(--text); }
+  .modal .m-body .field { margin-bottom: 12px; }
+  .modal .m-body label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; }
+  .modal .m-foot { padding: 0 20px 16px; display: flex; justify-content: flex-end; gap: 10px; }
+  .key-show { background: #f6f7fb; border: 1px dashed #c9cee0; border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; margin-top: 10px; }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="toasts"></div>
+<div id="modal-root"></div>
+
 <script>
-const $ = (s) => document.querySelector(s);
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtTime = (ts) => new Date(ts).toLocaleString("zh-CN", { hour12: false });
+
 let token = localStorage.getItem("teamai_admin_token") || "";
 let me = null;
 let tab = "usage";
+const state = { testResults: {} };
 
+/* ---------- Toast ---------- */
+function toast(text, type = "ok", ms = 2600) {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="ticon">${type === "ok" ? "✅" : type === "err" ? "⛔" : "ℹ️"}</span><div>${esc(text)}</div>`;
+  $("#toasts").appendChild(el);
+  setTimeout(() => { el.classList.add("hide"); setTimeout(() => el.remove(), 260); }, ms);
+}
+
+/* ---------- Modal ---------- */
+function openModal({ title, body, okText = "确定", danger = false, onOk }) {
+  const root = $("#modal-root");
+  root.innerHTML = `
+    <div class="mask">
+      <div class="modal">
+        <div class="m-head">${esc(title)}</div>
+        <div class="m-body"></div>
+        <div class="m-foot">
+          <button class="btn ghost" data-act="cancel">取消</button>
+          <button class="btn ${danger ? "danger" : ""}" data-act="ok">${esc(okText)}</button>
+        </div>
+      </div>
+    </div>`;
+  const bodyEl = $(".m-body", root);
+  if (typeof body === "string") bodyEl.innerHTML = body; else bodyEl.appendChild(body);
+  const close = () => (root.innerHTML = "");
+  $(".mask", root).addEventListener("click", (e) => { if (e.target.classList.contains("mask")) close(); });
+  $('[data-act="cancel"]', root).onclick = close;
+  $('[data-act="ok"]', root).onclick = async () => {
+    const okBtn = $('[data-act="ok"]', root);
+    okBtn.disabled = true;
+    try { if ((await onOk?.(bodyEl)) !== false) close(); }
+    catch (e) { toast(e.message, "err", 3600); }
+    finally { okBtn.disabled = false; }
+  };
+}
+function confirmBox(title, text, onOk, okText = "确定", danger = true) {
+  openModal({ title, body: `<p style="line-height:1.7">${esc(text)}</p>`, okText, danger, onOk });
+}
+function field(label, inner) {
+  return `<div class="field"><label>${esc(label)}</label>${inner}</div>`;
+}
+
+/* ---------- API ---------- */
 async function req(path, opts = {}) {
   const res = await fetch(path, {
     ...opts,
     headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...(opts.headers || {}) },
   });
-  if (res.status === 401) { logout(); throw new Error("登录已过期"); }
+  if (res.status === 401) { logout(); throw new Error("登录已过期，请重新登录"); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${res.status}`);
+  if (!res.ok) throw new Error(data.error || `请求失败（${res.status}）`);
   return data;
 }
 
 function logout() {
-  token = "";
+  token = ""; me = null;
   localStorage.removeItem("teamai_admin_token");
   renderLogin();
 }
 
-async function renderLogin() {
-  document.querySelector("#app").innerHTML = `
-    <div class="login-wrap"><div class="card login-card">
-      <h1>TeamAI 服务端控制台</h1>
-      <input id="email" placeholder="邮箱（默认 admin@teamai.local）" />
-      <input id="pw" type="password" placeholder="密码（默认 admin123）" />
-      <button style="width:100%" onclick="doLogin()">登录</button>
-      <div class="err" id="err"></div>
-      <div class="hint">管理端建议仅在内网访问；密钥等敏感操作请谨慎。</div>
+/* ---------- 登录 ---------- */
+function renderLogin() {
+  $("#app").innerHTML = `
+    <div class="login-wrap"><div class="login-card">
+      <div class="login-logo"><div class="mark">T</div><b>TeamAI 控制台</b></div>
+      <div class="login-sub">服务端管理入口 · 建议仅在内网访问</div>
+      <div class="field" style="margin-bottom:12px"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">邮箱</label><input id="email" placeholder="admin@teamai.local" /></div>
+      <div class="field" style="margin-bottom:18px"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">密码</label><input id="pw" type="password" placeholder="••••••" /></div>
+      <button class="btn" style="width:100%;justify-content:center" id="login-btn">登 录</button>
+      <div style="color:var(--err);font-size:12px;margin-top:10px;min-height:16px;text-align:center" id="err"></div>
     </div></div>`;
   $("#pw").addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
+  $("#email").addEventListener("keydown", (e) => e.key === "Enter" && $("#pw").focus());
+  $("#login-btn").onclick = doLogin;
+  $("#email").focus();
 }
 
 async function doLogin() {
+  const btn = $("#login-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> 登录中…';
+  $("#err").textContent = "";
   try {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: $("#email").value, password: $("#pw").value }),
+      body: JSON.stringify({ email: $("#email").value.trim(), password: $("#pw").value }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "登录失败");
     if (data.user?.role !== "admin") throw new Error("该账号不是管理员，无法进入控制台");
-    token = data.token;
-    me = data.user;
+    token = data.token; me = data.user;
     localStorage.setItem("teamai_admin_token", token);
+    toast(`欢迎回来，${me.name}`);
     renderMain();
-  } catch (e) { $("#err").textContent = e.message; }
+  } catch (e) {
+    $("#err").textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = "登 录";
+  }
 }
+
+/* ---------- 主框架 ---------- */
+const NAV = [
+  ["usage", "📊", "用量总览"],
+  ["providers", "🧠", "模型 Provider"],
+  ["keys", "🔑", "虚拟 Key"],
+  ["users", "👥", "成员"],
+  ["repos", "🗂", "Git 仓库"],
+  ["envs", "🖥", "在线环境"],
+  ["audit", "🛡", "审计日志"],
+];
 
 function renderMain() {
-  document.querySelector("#app").innerHTML = `
-    <div class="layout">
-      <div class="topbar">
-        <h1 style="text-align:left;margin:0">TeamAI 控制台</h1>
-        <div class="row">
-          <span>${me.name}（${me.role}）</span>
-          <button class="ghost sm" onclick="logout()">退出</button>
-        </div>
-      </div>
-      <div class="tabs" id="tabs"></div>
-      <div id="content"></div>
+  $("#app").innerHTML = `
+    <div class="shell">
+      <aside class="side">
+        <div class="brand"><div class="mark">T</div>TeamAI</div>
+        <nav class="nav">${NAV.map(([k, ic, n]) =>
+          `<div class="nav-item ${k === tab ? "on" : ""}" data-nav="${k}"><span class="ic">${ic}</span>${n}</div>`).join("")}
+        </nav>
+        <div class="me"><span class="name">${esc(me.name)}</span> · ${esc(me.role)}<span class="out" id="logout">退出</span></div>
+      </aside>
+      <main class="main"><div id="content"><div class="loading"><span class="spin"></span> 加载中…</div></div></main>
     </div>`;
-  const tabs = [
-    ["usage", "用量总览"],
-    ["providers", "模型 Provider"],
-    ["keys", "虚拟 Key"],
-    ["users", "成员"],
-    ["repos", "Git 仓库"],
-    ["envs", "在线环境"],
-    ["audit", "审计日志"],
-  ];
-  $("#tabs").innerHTML = tabs.map(([k, n]) =>
-    `<button class="${k === tab ? "on" : ""}" onclick="switchTab('${k}')">${n}</button>`).join("");
-  renderTab();
+  $$(".nav-item").forEach((el) => (el.onclick = () => { tab = el.dataset.nav; renderMain(); }));
+  $("#logout").onclick = () => confirmBox("退出登录", "确定退出控制台吗？", () => { logout(); }, "退出");
+  void renderTab();
 }
-
-function switchTab(k) { tab = k; renderMain(); }
 
 async function renderTab() {
   const c = $("#content");
-  c.innerHTML = "加载中…";
+  c.innerHTML = '<div class="loading"><span class="spin"></span> 加载中…</div>';
   try {
     if (tab === "usage") await renderUsage(c);
     else if (tab === "providers") await renderProviders(c);
@@ -136,300 +282,359 @@ async function renderTab() {
     else if (tab === "repos") await renderRepos(c);
     else if (tab === "envs") await renderEnvs(c);
     else if (tab === "audit") await renderAudit(c);
-  } catch (e) { c.innerHTML = `<div class="err">${e.message}</div>`; }
+  } catch (e) { c.innerHTML = `<div class="card empty">⛔ ${esc(e.message)}</div>`; }
 }
 
+const pageHead = (t, s) => `<div class="page-title">${t}</div><div class="page-sub">${s}</div>`;
+
+/* ---------- 用量 ---------- */
 async function renderUsage(c) {
   const s = await req("/api/usage/summary");
   const rows = Object.entries(s.byModel).map(([m, v]) =>
-    `<tr><td>${m}</td><td>${v.tokensIn}</td><td>${v.tokensOut}</td><td>${v.tokensIn + v.tokensOut}</td></tr>`).join("");
+    `<tr><td class="mono">${esc(m)}</td><td>${v.tokensIn.toLocaleString()}</td><td>${v.tokensOut.toLocaleString()}</td><td><b>${(v.tokensIn + v.tokensOut).toLocaleString()}</b></td></tr>`).join("");
+  const urows = Object.entries(s.byUser ?? {}).map(([u, v]) =>
+    `<tr><td class="mono">${esc(u.slice(0, 8))}…</td><td>${v.tokensIn.toLocaleString()}</td><td>${v.tokensOut.toLocaleString()}</td></tr>`).join("");
   c.innerHTML = `
+    ${pageHead("用量总览", "网关全部调用的 token 统计，实时落库")}
     <div class="stats">
-      <div class="stat"><div class="n">${s.totalTokensIn}</div><div class="t">输入 Tokens</div></div>
-      <div class="stat"><div class="n">${s.totalTokensOut}</div><div class="t">输出 Tokens</div></div>
+      <div class="stat"><div class="n">${s.totalTokensIn.toLocaleString()}</div><div class="t">输入 Tokens</div></div>
+      <div class="stat"><div class="n">${s.totalTokensOut.toLocaleString()}</div><div class="t">输出 Tokens</div></div>
+      <div class="stat"><div class="n">${(s.totalTokensIn + s.totalTokensOut).toLocaleString()}</div><div class="t">总 Tokens</div></div>
       <div class="stat"><div class="n">${s.totalCost.toFixed(4)}</div><div class="t">估算成本</div></div>
     </div>
-    <div class="section"><h3>按模型</h3>
-      <table><tr><th>模型</th><th>输入</th><th>输出</th><th>合计</th></tr>${rows || "<tr><td colspan=4>暂无数据</td></tr>"}</table>
+    <div class="card"><h3>按模型</h3>
+      <table><thead><tr><th>模型</th><th>输入</th><th>输出</th><th>合计</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="empty">暂无调用数据</td></tr>'}</tbody></table>
+    </div>
+    <div class="card"><h3>按成员</h3>
+      <table><thead><tr><th>成员 ID</th><th>输入</th><th>输出</th></tr></thead>
+      <tbody>${urows || '<tr><td colspan="3" class="empty">暂无数据</td></tr>'}</tbody></table>
     </div>`;
 }
 
+/* ---------- Provider ---------- */
 async function renderProviders(c) {
   const { providers } = await req("/api/admin/providers");
-  const rows = providers.map((p) => `
+  const rows = providers.map((p) => {
+    const t = state.testResults[p.id];
+    return `
     <tr>
-      <td>${p.name}</td><td>${p.type}</td>
-      <td class="mono">${p.baseUrl}</td>
-      <td>${p.models.join(", ") || "<i>全部模型</i>"}</td>
+      <td><b>${esc(p.name)}</b></td>
+      <td><span class="tag">${esc(p.type)}</span></td>
+      <td class="mono">${esc(p.baseUrl)}</td>
+      <td>${p.models.map((m) => `<span class="tag" style="margin:1px 2px">${esc(m)}</span>`).join("") || '<i style="color:var(--text2)">全部模型</i>'}</td>
       <td><span class="tag ${p.enabled ? "on" : "off"}">${p.enabled ? "启用" : "停用"}</span></td>
       <td>
-        <button class="sm ghost" onclick="testProvider('${p.id}', '${p.name}')">测试</button>
-        <button class="sm ghost" onclick="toggleProvider('${p.id}', ${!p.enabled})">${p.enabled ? "停用" : "启用"}</button>
-        <button class="sm danger" onclick="delProvider('${p.id}')">删除</button>
+        <button class="btn sm ghost" data-act="test" data-id="${p.id}" data-name="${esc(p.name)}">${t?.loading ? '<span class="spin"></span>' : "测试"}</button>
+        <button class="btn sm ghost" data-act="toggle" data-id="${p.id}" data-enabled="${p.enabled ? 0 : 1}">${p.enabled ? "停用" : "启用"}</button>
+        <button class="btn sm danger" data-act="del" data-id="${p.id}" data-name="${esc(p.name)}">删除</button>
       </td>
-    </tr>`).join("");
+    </tr>
+    ${t && !t.loading ? `<tr><td colspan="6" style="background:#f8f9fd">
+      ${t.ok
+        ? `<span class="tag on">连通正常 · ${t.latencyMs}ms</span> ${t.models?.length ? `拉取到 <b>${t.models.length}</b> 个模型 <button class="btn sm" data-act="save-models" data-id="${p.id}">保存为模型列表</button>` : "（上游未返回模型列表）"}`
+        : `<span class="tag off">连通失败 · ${t.latencyMs ?? 0}ms</span> <span class="mono" style="color:var(--err)">${esc(t.error ?? "")}</span>`}
+    </td></tr>` : ""}`;
+  }).join("");
   c.innerHTML = `
-    <div class="section"><h3>添加上游 Provider（真实 API Key 加密后仅存服务端）</h3>
+    ${pageHead("模型 Provider", "接入上游大模型 API，真实 Key 加密后仅存服务端")}
+    <div class="card"><h3>添加 Provider</h3>
       <div class="row">
-        <input id="p-name" placeholder="名称，如 deepseek" />
-        <select id="p-type">
-          <option value="openai-compatible">OpenAI 兼容（DeepSeek/GLM/Qwen/Moonshot…）</option>
+        <div class="field"><label>名称</label><input id="p-name" placeholder="如 deepseek" /></div>
+        <div class="field"><label>协议类型</label><select id="p-type">
+          <option value="openai-compatible">OpenAI 兼容（DeepSeek / GLM / Qwen / Moonshot…）</option>
           <option value="anthropic">Anthropic</option>
           <option value="gemini">Gemini</option>
-        </select>
-        <input id="p-url" placeholder="Base URL，如 https://api.deepseek.com" style="min-width:260px" />
-        <input id="p-key" placeholder="真实 API Key" />
-        <input id="p-models" placeholder="模型列表，逗号分隔（空=通配）" />
-        <button onclick="addProvider()">添加</button>
+        </select></div>
+        <div class="field"><label>Base URL</label><input id="p-url" placeholder="https://api.deepseek.com" style="min-width:260px" /></div>
+        <div class="field"><label>真实 API Key</label><input id="p-key" type="password" placeholder="sk-…" /></div>
+        <div class="field"><label>模型（逗号分隔，空=全部）</label><input id="p-models" placeholder="deepseek-chat,deepseek-reasoner" style="min-width:200px" /></div>
+        <button class="btn" id="add-provider">添加</button>
       </div>
-      <div class="hint">客户端 CLI / Agent 的 BASE_URL 指向本服务的 /v1 即可，无需真实 Key。</div>
+      <div class="hint">客户端与 CLI 的 BASE_URL 指向本服务的 <span class="mono">${location.origin}/v1</span>，用虚拟 Key 鉴权即可，无需接触真实 Key。</div>
     </div>
-    <div class="section"><h3>Provider 列表</h3>
-      <table><tr><th>名称</th><th>类型</th><th>Base URL</th><th>模型</th><th>状态</th><th>操作</th></tr>
-      ${rows || "<tr><td colspan=6>暂无 provider</td></tr>"}</table>
+    <div class="card"><h3>Provider 列表 <span class="sub">${providers.length} 个</span></h3>
+      <table><thead><tr><th>名称</th><th>类型</th><th>Base URL</th><th>模型</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">还没有 Provider，先在上方添加</td></tr>'}</tbody></table>
     </div>`;
-}
 
-async function addProvider() {
-  try {
-    await req("/api/admin/providers", {
-      method: "POST",
-      body: JSON.stringify({
-        name: $("#p-name").value, type: $("#p-type").value, baseUrl: $("#p-url").value,
-        apiKey: $("#p-key").value,
-        models: $("#p-models").value.split(",").map((s) => s.trim()).filter(Boolean),
-      }),
-    });
-    renderTab();
-  } catch (e) { alert(e.message); }
-}
-async function toggleProvider(id, enabled) {
-  await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
-  renderTab();
-}
-async function testProvider(id, name) {
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = "测试中…";
-  try {
-    const r = await req(`/api/admin/providers/${id}/test`, { method: "POST" });
-    if (!r.ok) {
-      alert(`「${name}」连通失败（${r.latencyMs}ms）\n${r.status ? "HTTP " + r.status + "：" : ""}${r.error ?? ""}`);
-    } else if (r.models?.length) {
-      const save = confirm(
-        `「${name}」连通正常（${r.latencyMs}ms）\n拉取到 ${r.models.length} 个模型：\n${r.models.slice(0, 20).join(", ")}${r.models.length > 20 ? " …" : ""}\n\n是否保存为该 Provider 的模型列表？`,
-      );
-      if (save) {
-        await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ models: r.models }) });
+  $("#add-provider").onclick = async () => {
+    try {
+      await req("/api/admin/providers", {
+        method: "POST",
+        body: JSON.stringify({
+          name: $("#p-name").value.trim(), type: $("#p-type").value, baseUrl: $("#p-url").value.trim(),
+          apiKey: $("#p-key").value,
+          models: $("#p-models").value.split(",").map((s) => s.trim()).filter(Boolean),
+        }),
+      });
+      toast("Provider 已添加");
+      renderTab();
+    } catch (e) { toast(e.message, "err", 3600); }
+  };
+  $$("[data-act]", c).forEach((btn) => (btn.onclick = () => {
+    const { act, id, name, enabled } = btn.dataset;
+    if (act === "toggle") {
+      req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ enabled: enabled === "1" }) })
+        .then(() => { toast(enabled === "1" ? "已启用" : "已停用"); renderTab(); })
+        .catch((e) => toast(e.message, "err"));
+    } else if (act === "del") {
+      confirmBox("删除 Provider", `删除「${name}」？关联模型将立即不可用。`, async () => {
+        await req(`/api/admin/providers/${id}`, { method: "DELETE" });
+        toast("已删除");
         renderTab();
-      }
-    } else {
-      alert(`「${name}」连通正常（${r.latencyMs}ms），但上游未返回模型列表`);
+      }, "删除");
+    } else if (act === "test") {
+      state.testResults[id] = { loading: true };
+      renderTab();
+      req(`/api/admin/providers/${id}/test`, { method: "POST" })
+        .then((r) => { state.testResults[id] = r; renderTab(); })
+        .catch((e) => { state.testResults[id] = { ok: false, error: e.message }; renderTab(); });
+    } else if (act === "save-models") {
+      const models = state.testResults[id]?.models ?? [];
+      req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ models }) })
+        .then(() => { toast(`已保存 ${models.length} 个模型`); delete state.testResults[id]; renderTab(); })
+        .catch((e) => toast(e.message, "err"));
     }
-  } catch (e) {
-    alert(`测试失败：${e.message}`);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "测试";
-  }
-}
-async function delProvider(id) {
-  if (!confirm("删除该 provider？")) return;
-  await req(`/api/admin/providers/${id}`, { method: "DELETE" });
-  renderTab();
+  }));
 }
 
+/* ---------- 虚拟 Key ---------- */
 async function renderKeys(c) {
   const { keys } = await req("/api/admin/keys");
   const rows = keys.map((k) => `
     <tr>
-      <td class="mono">${k.key.slice(0, 12)}…</td>
-      <td>${k.name || "-"}</td>
-      <td>${k.quota_tokens ?? "不限"}</td>
-      <td>${k.revoked_at ? '<span class="tag off">已吊销</span>' : '<span class="tag on">有效</span>'}</td>
-      <td>${new Date(k.created_at).toLocaleString("zh-CN")}</td>
-      <td>${k.revoked_at ? "" : `<button class="sm danger" onclick="revokeKey('${k.id}')">吊销</button>`}</td>
+      <td class="mono">${esc(k.key.slice(0, 14))}…</td>
+      <td>${esc(k.name || "-")}</td>
+      <td>${k.quota_tokens != null ? k.quota_tokens.toLocaleString() : "不限"}</td>
+      <td><span class="tag ${k.revoked_at ? "off" : "on"}">${k.revoked_at ? "已吊销" : "有效"}</span></td>
+      <td>${fmtTime(k.created_at)}</td>
+      <td>${k.revoked_at ? "" : `<button class="btn sm danger" data-revoke="${k.id}">吊销</button>`}</td>
     </tr>`).join("");
   c.innerHTML = `
-    <div class="section"><h3>签发虚拟 Key（给客户端 CLI 使用）</h3>
+    ${pageHead("虚拟 Key", "分发给成员或 CLI 的访问凭证，可随时吊销、按配额限流")}
+    <div class="card"><h3>签发新 Key</h3>
       <div class="row">
-        <input id="k-name" placeholder="备注名" />
-        <input id="k-quota" type="number" placeholder="token 配额（空=不限）" />
-        <button onclick="createKey()">签发</button>
+        <div class="field"><label>备注名</label><input id="k-name" placeholder="如：小明的 CLI" /></div>
+        <div class="field"><label>配额（tokens，空=不限）</label><input id="k-quota" type="number" placeholder="1000000" /></div>
+        <button class="btn" id="issue-key">签发</button>
       </div>
-      <div class="hint mono" id="new-key"></div>
     </div>
-    <div class="section"><h3>我的 Key</h3>
-      <table><tr><th>Key</th><th>备注</th><th>配额</th><th>状态</th><th>创建时间</th><th></th></tr>
-      ${rows || "<tr><td colspan=6>暂无</td></tr>"}</table>
+    <div class="card"><h3>Key 列表 <span class="sub">${keys.length} 个</span></h3>
+      <table><thead><tr><th>Key</th><th>备注</th><th>配额</th><th>状态</th><th>创建时间</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无 Key</td></tr>'}</tbody></table>
     </div>`;
+
+  $("#issue-key").onclick = async () => {
+    try {
+      const k = await req("/api/keys", {
+        method: "POST",
+        body: JSON.stringify({
+          name: $("#k-name").value.trim(),
+          quotaTokens: $("#k-quota").value ? Number($("#k-quota").value) : null,
+        }),
+      });
+      openModal({
+        title: "Key 已签发",
+        body: `<p style="line-height:1.7">请立即复制，完整 Key 只显示这一次：</p><div class="key-show">${esc(k.key)}</div>`,
+        okText: "我已保存",
+        onOk: () => { navigator.clipboard?.writeText(k.key).catch(() => {}); renderTab(); },
+      });
+    } catch (e) { toast(e.message, "err", 3600); }
+  };
+  $$("[data-revoke]", c).forEach((btn) => (btn.onclick = () =>
+    confirmBox("吊销 Key", "吊销后立即失效，使用该 Key 的调用将被拒绝。", async () => {
+      await req(`/api/keys/${btn.dataset.revoke}`, { method: "DELETE" });
+      toast("已吊销");
+      renderTab();
+    }, "吊销")));
 }
 
-async function createKey() {
-  try {
-    const k = await req("/api/keys", {
-      method: "POST",
-      body: JSON.stringify({ name: $("#k-name").value, quotaTokens: $("#k-quota").value ? Number($("#k-quota").value) : null }),
-    });
-    $("#new-key").textContent = `新 Key（只显示一次，请保存）：${k.key}`;
-    renderKeys($("#content"));
-    setTimeout(() => { $("#new-key").textContent = `新 Key（只显示一次，请保存）：${k.key}`; }, 50);
-  } catch (e) { alert(e.message); }
-}
-async function revokeKey(id) {
-  await req(`/api/keys/${id}`, { method: "DELETE", headers: {} });
-  renderTab();
-}
-
+/* ---------- 成员 ---------- */
 async function renderUsers(c) {
   const { users } = await req("/api/users");
-  const rows = users.map((u) =>
-    `<tr><td>${u.name}</td><td>${u.email}</td><td><span class="tag">${u.role}</span></td>
-     <td>${new Date(u.created_at).toLocaleString("zh-CN")}</td></tr>`).join("");
+  const rows = users.map((u) => `
+    <tr>
+      <td><b>${esc(u.name)}</b></td>
+      <td>${esc(u.email)}</td>
+      <td><span class="tag ${u.role === "admin" ? "on" : ""}">${esc(u.role)}</span></td>
+      <td>${fmtTime(u.created_at)}</td>
+    </tr>`).join("");
   c.innerHTML = `
-    <div class="section"><h3>创建成员</h3>
+    ${pageHead("成员", "团队成员账号，创建后即可登录客户端")}
+    <div class="card"><h3>添加成员</h3>
       <div class="row">
-        <input id="u-name" placeholder="姓名" />
-        <input id="u-email" placeholder="邮箱" />
-        <input id="u-pw" placeholder="初始密码" />
-        <button onclick="addUser()">创建</button>
+        <div class="field"><label>姓名</label><input id="u-name" placeholder="张三" /></div>
+        <div class="field"><label>邮箱</label><input id="u-email" placeholder="zhangsan@team.local" /></div>
+        <div class="field"><label>初始密码</label><input id="u-pw" placeholder="至少 6 位" /></div>
+        <button class="btn" id="add-user">创建</button>
       </div>
     </div>
-    <div class="section"><h3>成员列表</h3>
-      <table><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>创建时间</th></tr>${rows}</table>
+    <div class="card"><h3>成员列表 <span class="sub">${users.length} 人</span></h3>
+      <table><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>加入时间</th></tr></thead>
+      <tbody>${rows}</tbody></table>
     </div>`;
+  $("#add-user").onclick = async () => {
+    try {
+      await req("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify({ name: $("#u-name").value.trim(), email: $("#u-email").value.trim(), password: $("#u-pw").value }),
+      });
+      toast("成员已创建");
+      renderTab();
+    } catch (e) { toast(e.message, "err", 3600); }
+  };
 }
 
-async function addUser() {
-  try {
-    await req("/api/admin/users", {
-      method: "POST",
-      body: JSON.stringify({ name: $("#u-name").value, email: $("#u-email").value, password: $("#u-pw").value }),
-    });
-    renderTab();
-  } catch (e) { alert(e.message); }
-}
-
+/* ---------- 仓库 ---------- */
 async function renderRepos(c) {
   const { repos } = await req("/api/repos");
-  const base = location.origin;
-  const rows = repos.map((r) => `
-    <tr>
-      <td><b>${r.group}/${r.name}</b></td>
-      <td>${new Date(r.createdAt).toLocaleString("zh-CN")}</td>
-      <td class="mono">${base}/git/${r.group}/${r.name}.git</td>
-      <td><button class="sm danger" onclick="delRepo('${r.id}')">删除</button></td>
-    </tr>`).join("");
+  const rows = repos.map((r) => {
+    const url = `${location.origin}/git/${r.group}/${r.name}.git`;
+    return `<tr>
+      <td><b>${esc(r.group)}/${esc(r.name)}</b></td>
+      <td>${fmtTime(r.createdAt)}</td>
+      <td class="mono">${esc(url)} <span class="copy" data-copy="${esc(url)}">复制</span></td>
+      <td><button class="btn sm danger" data-del="${r.id}" data-name="${esc(r.group)}/${esc(r.name)}">删除</button></td>
+    </tr>`;
+  }).join("");
   c.innerHTML = `
-    <div class="section"><h3>新建仓库</h3>
+    ${pageHead("Git 仓库", "内置 Git 托管，smart HTTP 协议，凭 token 克隆/推送")}
+    <div class="card"><h3>新建仓库</h3>
       <div class="row">
-        <input id="r-group" placeholder="分组" value="default" />
-        <input id="r-name" placeholder="仓库名" />
-        <button onclick="addRepo()">创建</button>
+        <div class="field"><label>分组</label><input id="r-group" value="default" /></div>
+        <div class="field"><label>仓库名</label><input id="r-name" placeholder="my-project" /></div>
+        <button class="btn" id="add-repo">创建</button>
       </div>
-      <div class="hint">克隆时需带凭证：http://&lt;邮箱&gt;:&lt;token&gt;@主机/git/&lt;分组&gt;/&lt;仓库名&gt;.git</div>
+      <div class="hint">克隆凭证格式：<span class="mono">http://&lt;邮箱&gt;:&lt;token&gt;@${location.host}/git/&lt;分组&gt;/&lt;仓库名&gt;.git</span>，token 可在客户端登录后获取。</div>
     </div>
-    <div class="section"><h3>仓库列表</h3>
-      <table><tr><th>仓库</th><th>创建时间</th><th>地址</th><th></th></tr>
-      ${rows || "<tr><td colspan=4>暂无仓库</td></tr>"}</table>
+    <div class="card"><h3>仓库列表 <span class="sub">${repos.length} 个</span></h3>
+      <table><thead><tr><th>仓库</th><th>创建时间</th><th>地址</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="empty">暂无仓库</td></tr>'}</tbody></table>
     </div>`;
+  $("#add-repo").onclick = async () => {
+    try {
+      await req("/api/repos", { method: "POST", body: JSON.stringify({ group: $("#r-group").value.trim(), name: $("#r-name").value.trim() }) });
+      toast("仓库已创建");
+      renderTab();
+    } catch (e) { toast(e.message, "err", 3600); }
+  };
+  $$("[data-copy]", c).forEach((el) => (el.onclick = () => {
+    navigator.clipboard?.writeText(el.dataset.copy).then(() => toast("地址已复制")).catch(() => toast("复制失败", "err"));
+  }));
+  $$("[data-del]", c).forEach((btn) => (btn.onclick = () =>
+    confirmBox("删除仓库", `删除「${btn.dataset.name}」？磁盘数据将一并删除，不可恢复。`, async () => {
+      await req(`/api/repos/${btn.dataset.del}`, { method: "DELETE" });
+      toast("仓库已删除");
+      renderTab();
+    }, "删除")));
 }
 
-async function addRepo() {
-  try {
-    await req("/api/repos", { method: "POST", body: JSON.stringify({ group: $("#r-group").value, name: $("#r-name").value }) });
-    renderTab();
-  } catch (e) { alert(e.message); }
-}
-async function delRepo(id) {
-  if (!confirm("删除仓库？磁盘数据将一并删除")) return;
-  await req(`/api/repos/${id}`, { method: "DELETE" });
-  renderTab();
-}
-
+/* ---------- 在线环境 ---------- */
 async function renderEnvs(c) {
   const [{ envs }, { repos }] = await Promise.all([req("/api/envs?all=1"), req("/api/repos")]);
+  const statusTag = (s) => s === "running" ? '<span class="tag run">运行中</span>'
+    : s === "error" ? '<span class="tag off">异常退出</span>' : '<span class="tag">已停止</span>';
   const rows = envs.map((e) => `
     <tr>
-      <td><b>${e.name}</b></td>
-      <td>${e.repoName || "-"}</td>
-      <td>${e.userName}</td>
-      <td class="mono">${e.runCmd || "-"}</td>
-      <td><span class="tag ${e.status === "running" ? "on" : "off"}">${e.status}</span></td>
+      <td><b>${esc(e.name)}</b></td>
+      <td>${esc(e.repoName || "-")}</td>
+      <td>${esc(e.userName)}</td>
+      <td class="mono">${esc(e.runCmd || "-")}</td>
+      <td>${statusTag(e.status)}</td>
       <td>
         ${e.status === "running"
-          ? `<button class="sm ghost" onclick="stopEnv('${e.id}')">停止</button>`
-          : `<button class="sm ghost" onclick="startEnv('${e.id}')">启动</button>`}
-        <button class="sm ghost" onclick="viewEnvLogs('${e.id}', '${e.name}')">日志</button>
-        <button class="sm danger" onclick="delEnv('${e.id}')">删除</button>
+          ? `<button class="btn sm ghost" data-stop="${e.id}">停止</button>`
+          : `<button class="btn sm ghost" data-start="${e.id}" ${e.runCmd ? "" : "disabled"}>启动</button>`}
+        <button class="btn sm ghost" data-logs="${e.id}" data-name="${esc(e.name)}">日志</button>
+        <button class="btn sm danger" data-del="${e.id}" data-name="${esc(e.name)}">删除</button>
       </td>
     </tr>`).join("");
-  const repoOpts = repos.map((r) => `<option value="${r.id}">${r.group}/${r.name}</option>`).join("");
   c.innerHTML = `
-    <div class="section"><h3>新建在线环境（从仓库克隆工作区，可运行启动命令）</h3>
+    ${pageHead("在线环境", "服务端上的隔离工作区：从仓库克隆代码，跑 dev server 或脚本")}
+    <div class="card"><h3>新建环境</h3>
       <div class="row">
-        <input id="e-name" placeholder="环境名" />
-        <select id="e-repo"><option value="">（空工作区）</option>${repoOpts}</select>
-        <input id="e-cmd" placeholder="启动命令，如 npm run dev（可空）" style="min-width:260px" />
-        <button onclick="addEnv()">创建</button>
+        <div class="field"><label>环境名</label><input id="e-name" placeholder="前端 dev 环境" /></div>
+        <div class="field"><label>从仓库克隆</label><select id="e-repo">
+          <option value="">（空工作区）</option>
+          ${repos.map((r) => `<option value="${r.id}">${esc(r.group)}/${esc(r.name)}</option>`).join("")}
+        </select></div>
+        <div class="field"><label>启动命令（可空）</label><input id="e-cmd" placeholder="npm run dev" style="min-width:220px" /></div>
+        <button class="btn" id="add-env">创建</button>
       </div>
-      <div class="hint">环境是服务端上的隔离工作区进程，适合跑 dev server / 脚本任务；日志实时可查。</div>
     </div>
-    <div class="section"><h3>环境列表</h3>
-      <table><tr><th>名称</th><th>仓库</th><th>创建者</th><th>启动命令</th><th>状态</th><th>操作</th></tr>
-      ${rows || "<tr><td colspan=6>暂无环境</td></tr>"}</table>
+    <div class="card"><h3>环境列表 <span class="sub">${envs.length} 个</span></h3>
+      <table><thead><tr><th>名称</th><th>仓库</th><th>创建者</th><th>启动命令</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无环境</td></tr>'}</tbody></table>
     </div>
-    <div class="section" id="env-logs" style="display:none"><h3 id="env-logs-title">日志</h3>
-      <pre id="env-logs-body" style="background:#111;color:#0f0;padding:12px;border-radius:6px;max-height:320px;overflow:auto;font-size:12px"></pre>
-    </div>`;
+    <div class="card" id="env-log-card" style="display:none"><h3 id="env-log-title">日志</h3><div class="logbox" id="env-log-body"></div></div>`;
+
+  $("#add-env").onclick = async () => {
+    try {
+      await req("/api/envs", {
+        method: "POST",
+        body: JSON.stringify({
+          name: $("#e-name").value.trim(),
+          repoId: $("#e-repo").value || undefined,
+          runCmd: $("#e-cmd").value.trim() || undefined,
+        }),
+      });
+      toast("环境已创建");
+      renderTab();
+    } catch (e) { toast(e.message, "err", 3600); }
+  };
+  $$("[data-start]", c).forEach((b) => (b.onclick = () =>
+    req(`/api/envs/${b.dataset.start}/start`, { method: "POST" }).then(() => { toast("已启动"); renderTab(); }).catch((e) => toast(e.message, "err"))));
+  $$("[data-stop]", c).forEach((b) => (b.onclick = () =>
+    req(`/api/envs/${b.dataset.stop}/stop`, { method: "POST" }).then(() => { toast("已停止"); renderTab(); }).catch((e) => toast(e.message, "err"))));
+  $$("[data-del]", c).forEach((b) => (b.onclick = () =>
+    confirmBox("删除环境", `删除「${b.dataset.name}」？工作区将被清除。`, async () => {
+      await req(`/api/envs/${b.dataset.del}`, { method: "DELETE" });
+      toast("环境已删除");
+      renderTab();
+    }, "删除")));
+  $$("[data-logs]", c).forEach((b) => (b.onclick = async () => {
+    const card = $("#env-log-card");
+    card.style.display = "block";
+    $("#env-log-title").textContent = `日志：${b.dataset.name}`;
+    $("#env-log-body").textContent = "加载中…";
+    card.scrollIntoView({ behavior: "smooth" });
+    try {
+      const { lines } = await req(`/api/envs/${b.dataset.logs}/logs?tail=300`);
+      $("#env-log-body").textContent = lines.join("\n") || "（暂无日志）";
+    } catch (e) { $("#env-log-body").textContent = `加载失败：${e.message}`; }
+  }));
 }
 
-async function addEnv() {
-  try {
-    await req("/api/envs", {
-      method: "POST",
-      body: JSON.stringify({
-        name: $("#e-name").value,
-        repoId: $("#e-repo").value || undefined,
-        runCmd: $("#e-cmd").value || undefined,
-      }),
-    });
-    renderTab();
-  } catch (e) { alert(e.message); }
-}
-async function startEnv(id) { await req(`/api/envs/${id}/start`, { method: "POST" }); renderTab(); }
-async function stopEnv(id) { await req(`/api/envs/${id}/stop`, { method: "POST" }); renderTab(); }
-async function delEnv(id) {
-  if (!confirm("删除环境？工作区将被清除")) return;
-  await req(`/api/envs/${id}`, { method: "DELETE" });
-  renderTab();
-}
-async function viewEnvLogs(id, name) {
-  const box = document.querySelector("#env-logs");
-  box.style.display = "block";
-  document.querySelector("#env-logs-title").textContent = `日志：${name}`;
-  const { lines } = await req(`/api/envs/${id}/logs?tail=300`);
-  document.querySelector("#env-logs-body").textContent = lines.join("\n") || "（暂无日志）";
-}
-
+/* ---------- 审计 ---------- */
 async function renderAudit(c) {
   const { logs } = await req("/api/admin/audit?limit=200");
+  const ACTION_CN = {
+    "auth.login": "登录", "auth.login_failed": "登录失败",
+    "user.create": "创建成员", "provider.create": "添加 Provider", "provider.enable": "启用 Provider",
+    "provider.disable": "停用 Provider", "provider.delete": "删除 Provider", "provider.update_models": "更新模型列表",
+    "key.create": "签发 Key", "key.revoke": "吊销 Key",
+    "repo.create": "创建仓库", "repo.delete": "删除仓库",
+    "env.create": "创建环境", "env.start": "启动环境", "env.stop": "停止环境", "env.delete": "删除环境",
+  };
   const rows = logs.map((l) => `
     <tr>
-      <td>${new Date(l.ts).toLocaleString("zh-CN")}</td>
-      <td>${l.userEmail || "-"}</td>
-      <td><span class="tag on">${l.action}</span></td>
-      <td>${l.target || "-"}</td>
-      <td class="mono">${l.detail || "-"}</td>
-      <td class="mono">${l.ip || "-"}</td>
+      <td class="mono">${fmtTime(l.ts)}</td>
+      <td>${esc(l.userEmail || "-")}</td>
+      <td><span class="tag ${l.action.includes("failed") || l.action.includes("delete") || l.action.includes("revoke") ? "off" : "on"}">${esc(ACTION_CN[l.action] ?? l.action)}</span></td>
+      <td>${esc(l.target || "-")}</td>
+      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.detail)}">${esc(l.detail || "-")}</td>
+      <td class="mono">${esc(l.ip || "-")}</td>
     </tr>`).join("");
   c.innerHTML = `
-    <div class="section"><h3>审计日志（最近 200 条）</h3>
-      <table><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th><th>详情</th><th>IP</th></tr>
-      ${rows || "<tr><td colspan=6>暂无日志</td></tr>"}</table>
+    ${pageHead("审计日志", "关键操作全量留痕：登录、密钥、仓库、环境等")}
+    <div class="card"><h3>最近 ${logs.length} 条</h3>
+      <table><thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th><th>详情</th><th>IP</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">暂无日志</td></tr>'}</tbody></table>
     </div>`;
 }
 
+/* ---------- 启动 ---------- */
 if (token) {
   fetch("/api/me", { headers: { authorization: `Bearer ${token}` } })
     .then((r) => (r.ok ? r.json() : Promise.reject()))
