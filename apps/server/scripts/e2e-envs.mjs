@@ -140,6 +140,8 @@ try {
   const list = await (await fetch(`${BASE}/api/envs`, { headers: authH })).json();
   check("环境列表", list.envs.length === 2 && list.envs.every((e) => e.userName === "Admin"), JSON.stringify(list).slice(0, 200));
 
+  check("runner 后端自动降级为 process（沙箱无 docker）", list.runner === "process", list.runner);
+
   const auditDenied = await fetch(`${BASE}/api/admin/audit`, { headers: mH });
   check("成员无法查看审计日志", auditDenied.status === 403);
 
