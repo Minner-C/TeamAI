@@ -11,7 +11,6 @@ export interface ServerConfig {
   jwtSecret: string;
   envRunner: "auto" | "process" | "docker";
   envImage: string;
-  webDir: string;
 }
 
 export function loadConfig(): ServerConfig {
@@ -25,6 +24,5 @@ export function loadConfig(): ServerConfig {
     jwtSecret: process.env.TEAMAI_JWT_SECRET ?? "dev-only-secret-change-me",
     envRunner: runnerRaw === "docker" || runnerRaw === "process" ? runnerRaw : "auto",
     envImage: process.env.TEAMAI_ENV_IMAGE ?? "node:22-alpine",
-    webDir: process.env.TEAMAI_WEB_DIR ?? path.resolve(__dirname, "../../client/dist"),
   };
 }
