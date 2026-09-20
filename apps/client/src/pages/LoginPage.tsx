@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, Divider, Form, Input, Typography, message } from "antd";
+import { Button, Divider, Form, Input, Typography, message } from "antd";
 import { ApiOutlined, DesktopOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/appStore";
 import { api } from "../api";
@@ -32,15 +32,14 @@ export default function LoginPage() {
 
   return (
     <div className="login-wrap">
-      <Card style={{ width: 400 }}>
-        <Typography.Title level={3} style={{ textAlign: "center" }}>
-          TeamAI
-        </Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ textAlign: "center" }}>
+      <div className="login-card">
+        <div className="login-logo">T</div>
+        <div className="login-title">TeamAI</div>
+        <div className="login-sub">
           {api.isElectron
             ? "连接到团队的 TeamAI 服务端"
             : "浏览器模式（与当前站点同源，无需配置地址）"}
-        </Typography.Paragraph>
+        </div>
         <Form
           layout="vertical"
           onFinish={onFinish}
@@ -78,7 +77,7 @@ export default function LoginPage() {
             </Typography.Paragraph>
           </>
         )}
-      </Card>
+      </div>
     </div>
   );
 }

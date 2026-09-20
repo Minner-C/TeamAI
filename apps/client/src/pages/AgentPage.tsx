@@ -1,18 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button, Input, Modal, Radio, Select, Tag, message } from "antd";
 import {
-  Button,
-  Drawer,
-  Input,
-  List,
-  Modal,
-  Radio,
-  Select,
-  Space,
-  Tag,
-  Typography,
-  message,
-} from "antd";
-import { FolderOpenOutlined, StopOutlined } from "@ant-design/icons";
+  CheckOutlined,
+  CloudOutlined,
+  FolderOpenOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  SearchOutlined,
+  SendOutlined,
+  StopOutlined,
+} from "@ant-design/icons";
 import { api, type AgentChunk, type SessionView } from "../api";
 import { useAppStore } from "../store/appStore";
 
@@ -32,6 +29,17 @@ interface CliInfoItem {
   version: string | null;
 }
 
+function sessionGroup(ts: number): string {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (ts >= startOfToday) return "今天";
+  if (ts >= startOfToday - 86400000) return "昨天";
+  if (ts >= startOfToday - 6 * 86400000) return "本周";
+  return "更早";
+}
+
+const GROUP_ORDER = ["今天", "昨天", "本周", "更早"];
+
 export default function AgentPage() {
   const [models, setModels] = useState<Array<{ model: string; providerType: string }>>([]);
   const [model, setModel] = useState<string>();
@@ -42,8 +50,10 @@ export default function AgentPage() {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionView[]>([]);
+  const [sessionFilter, setSessionFilter] = useState("");
+  const [activeSessionId, setActiveSessionId] = useState<string>();
+  const [openThoughts, setOpenThoughts] = useState<Record<number, boolean>>({});
   const [permission, setPermission] = useState<{
     taskId: string;
     requestId: string;
@@ -63,6 +73,11 @@ export default function AgentPage() {
     }
   }, [agentDraft, clearAgentDraft]);
 
+  function refreshSessions() {
+    if (offline) return;
+    api.listSessions().then(setSessions).catch(() => undefined);
+  }
+
   useEffect(() => {
     if (!offline) {
       api
@@ -72,6 +87,7 @@ export default function AgentPage() {
           if (list.length > 0) setModel(list[0].model);
         })
         .catch((err) => message.error(`获取模型列表失败：${err.message}`));
+      refreshSessions();
     }
     if (api.isElectron) {
       api.detectClis().then((list) => {
@@ -80,6 +96,7 @@ export default function AgentPage() {
         if (installed.length > 0) setCli(installed[0].kind);
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -125,7 +142,7 @@ export default function AgentPage() {
         } else if (chunk.kind === "thought" && chunk.text) {
           next[next.length - 1] = { ...last, thought: (last.thought ?? "") + chunk.text };
         } else if (chunk.kind === "tool") {
-          next[next.length - 1] = { ...last, tools: [...(last.tools ?? []), "工具调用"] };
+          next[next.length - 1] = { ...last, tools: [...(last.tools ?? []), chunk.text || "工具调用"] };
         } else if (chunk.kind === "error" && chunk.text) {
           next[next.length - 1] = {
             ...last,
@@ -145,6 +162,29 @@ export default function AgentPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [items]);
+
+  const groupedSessions = useMemo(() => {
+    const kw = sessionFilter.trim().toLowerCase();
+    const filtered = kw ? sessions.filter((s) => s.title.toLowerCase().includes(kw)) : sessions;
+    const groups = new Map<string, SessionView[]>();
+    for (const s of filtered) {
+      const g = sessionGroup(s.createdAt);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g)!.push(s);
+    }
+    return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => ({ group: g, list: groups.get(g)! }));
+  }, [sessions, sessionFilter]);
+
+  function newChat() {
+    if (sending) {
+      message.warning("当前任务进行中，请先停止");
+      return;
+    }
+    setItems([]);
+    setActiveSessionId(undefined);
+    setOpenThoughts({});
+    taskIdRef.current = "";
+  }
 
   async function send() {
     const text = input.trim();
@@ -216,21 +256,17 @@ export default function AgentPage() {
         messages: items.map(({ role, content }) => ({ role, content })),
       });
       message.success("会话已存档到服务端");
+      refreshSessions();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存失败");
     }
   }
 
-  async function openSessions() {
-    try {
-      setSessions(await api.listSessions());
-      setSessionsOpen(true);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "加载失败");
-    }
-  }
-
   async function restoreSession(id: string) {
+    if (sending) {
+      message.warning("当前任务进行中，请先停止");
+      return;
+    }
     try {
       const s = await api.getSession(id);
       setItems(
@@ -238,7 +274,8 @@ export default function AgentPage() {
           .filter((m) => m.role === "user" || m.role === "assistant")
           .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       );
-      setSessionsOpen(false);
+      setActiveSessionId(id);
+      setOpenThoughts({});
       message.success(`已恢复会话「${s.title}」`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "恢复失败");
@@ -248,155 +285,229 @@ export default function AgentPage() {
   const cliReady = mode === "gateway" || (cli && workdir);
 
   return (
-    <div className="page-card chat-page">
-      <Space style={{ marginBottom: 12 }} wrap>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Agent 工作台
-        </Typography.Title>
-        {api.isElectron && (
-          <Radio.Group
-            value={mode}
-            onChange={(e) => setMode(e.target.value as "gateway" | "cli")}
-            optionType="button"
-            buttonStyle="solid"
-            size="small"
-            options={[
-              { value: "gateway", label: "网关模型", disabled: offline },
-              { value: "cli", label: "本地 CLI" },
-            ]}
-          />
-        )}
-        {mode === "gateway" ? (
-          <Select
-            style={{ minWidth: 260 }}
-            placeholder="选择模型（来自服务端网关）"
-            value={model}
-            onChange={setModel}
-            options={models.map((m) => ({
-              value: m.model,
-              label: `${m.model}（${m.providerType}）`,
-            }))}
-            notFoundContent="服务端尚未配置 provider"
-          />
-        ) : (
-          <>
-            <Select
-              style={{ minWidth: 180 }}
-              placeholder="选择 CLI"
-              value={cli}
-              onChange={setCli}
-              options={clis.map((c) => ({
-                value: c.kind,
-                label: `${c.kind}（${c.channel}）`,
-              }))}
-              notFoundContent="未检测到已安装的 CLI"
-            />
+    <div className="agent-layout">
+      <div className="agent-sessions">
+        <div className="agent-sessions-top">
+          <button className="agent-new-btn" onClick={newChat}>
+            <PlusOutlined /> 新增对话
+          </button>
+          {!offline && (
             <Input
-              style={{ width: 260 }}
-              placeholder="工作目录"
-              value={workdir}
-              onChange={(e) => setWorkdir(e.target.value)}
-              suffix={
-                <FolderOpenOutlined
-                  style={{ cursor: "pointer" }}
-                  onClick={() => void api.pickDir().then((d) => d && setWorkdir(d))}
-                />
-              }
+              size="small"
+              allowClear
+              prefix={<SearchOutlined style={{ color: "#6d6d73" }} />}
+              placeholder="搜索会话…"
+              value={sessionFilter}
+              onChange={(e) => setSessionFilter(e.target.value)}
             />
-          </>
-        )}
-        {sending && <Tag color="processing">生成中…</Tag>}
-        {mode === "cli" && sending && (
-          <Button size="small" danger icon={<StopOutlined />} onClick={() => void stopCli()}>
-            停止
-          </Button>
-        )}
-        {!offline && (
-          <>
-            <Button size="small" onClick={saveSession} disabled={items.length === 0 || sending}>
-              保存会话
-            </Button>
-            <Button size="small" onClick={() => void openSessions()}>
-              会话存档
-            </Button>
-          </>
-        )}
-      </Space>
-
-      <div className="chat-history">
-        {items.length === 0 && (
-          <Typography.Paragraph type="secondary">
-            {mode === "gateway"
-              ? "选择模型后开始对话。请求经服务端网关转发并计入用量。"
-              : "本地 CLI 模式：选择已安装的 CLI 与工作目录，任务在本机执行（Kimi 走 ACP 长连接，Claude 走 stream-json 双向协议）。"}
-          </Typography.Paragraph>
-        )}
-        {items.map((it, i) => (
-          <div key={i} className={`chat-item chat-${it.role}`}>
-            <div className="chat-role">{it.role === "user" ? "我" : "AI"}</div>
-            <div className="chat-bubble">
-              {it.thought && (
-                <div style={{ fontSize: 12, opacity: 0.55, fontStyle: "italic", marginBottom: 6 }}>
-                  {it.thought}
-                </div>
-              )}
-              {it.tools?.map((t, ti) => (
-                <Tag key={ti} style={{ marginBottom: 4 }}>
-                  {t}
-                </Tag>
-              ))}
-              {it.content}
-              {it.streaming && <span className="chat-cursor">▍</span>}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
+          )}
+        </div>
+        <div className="agent-sessions-list">
+          {offline ? (
+            <div className="agent-session-group">离线模式 · 会话不存档</div>
+          ) : groupedSessions.length === 0 ? (
+            <div className="agent-session-group">暂无存档会话</div>
+          ) : (
+            groupedSessions.map(({ group, list }) => (
+              <div key={group}>
+                <div className="agent-session-group">{group}</div>
+                {list.map((s) => (
+                  <div
+                    key={s.id}
+                    className={`agent-session-item${activeSessionId === s.id ? " agent-session-item-active" : ""}`}
+                    onClick={() => void restoreSession(s.id)}
+                  >
+                    <div className="agent-session-title">{s.title}</div>
+                    <div className="agent-session-meta">
+                      {s.cli || "teamai-client"} · {new Date(s.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      <Space.Compact style={{ width: "100%", marginTop: 12 }}>
-        <Input.TextArea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onPressEnter={(e) => {
-            if (!e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
-          autoSize={{ minRows: 1, maxRows: 6 }}
-        />
-        <Button type="primary" onClick={send} disabled={!cliReady || sending}>
-          发送
-        </Button>
-      </Space.Compact>
-
-      <Drawer
-        title="会话存档"
-        open={sessionsOpen}
-        onClose={() => setSessionsOpen(false)}
-        width={420}
-      >
-        <List
-          size="small"
-          dataSource={sessions}
-          locale={{ emptyText: "还没有存档，点上方「保存会话」试试" }}
-          renderItem={(s) => (
-            <List.Item
-              actions={[
-                <Button key="restore" size="small" type="link" onClick={() => void restoreSession(s.id)}>
-                  恢复
-                </Button>,
+      <div className="agent-main">
+        <div className="agent-topbar">
+          <span className="agent-topbar-title">Agent 工作台</span>
+          {api.isElectron && (
+            <Radio.Group
+              value={mode}
+              onChange={(e) => setMode(e.target.value as "gateway" | "cli")}
+              optionType="button"
+              buttonStyle="solid"
+              size="small"
+              options={[
+                { value: "gateway", label: "网关模型", disabled: offline },
+                { value: "cli", label: "本地 CLI" },
               ]}
-            >
-              <List.Item.Meta
-                title={s.title}
-                description={`${s.cli || "teamai-client"} · ${new Date(s.createdAt).toLocaleString("zh-CN")}`}
-              />
-            </List.Item>
+            />
           )}
-        />
-      </Drawer>
+          {mode === "gateway" ? (
+            <Select
+              size="small"
+              style={{ minWidth: 220 }}
+              placeholder="选择模型（来自服务端网关）"
+              value={model}
+              onChange={setModel}
+              options={models.map((m) => ({
+                value: m.model,
+                label: `${m.model}（${m.providerType}）`,
+              }))}
+              notFoundContent="服务端尚未配置 provider"
+            />
+          ) : (
+            <>
+              <Select
+                size="small"
+                style={{ minWidth: 150 }}
+                placeholder="选择 CLI"
+                value={cli}
+                onChange={setCli}
+                options={clis.map((c) => ({
+                  value: c.kind,
+                  label: `${c.kind}（${c.channel}）`,
+                }))}
+                notFoundContent="未检测到已安装的 CLI"
+              />
+              <Input
+                size="small"
+                style={{ width: 240 }}
+                placeholder="工作目录"
+                value={workdir}
+                onChange={(e) => setWorkdir(e.target.value)}
+                suffix={
+                  <FolderOpenOutlined
+                    style={{ cursor: "pointer" }}
+                    onClick={() => void api.pickDir().then((d) => d && setWorkdir(d))}
+                  />
+                }
+              />
+            </>
+          )}
+          <span style={{ flex: 1 }} />
+          {sending && (
+            <span style={{ fontSize: 12, color: "#9a9aa0" }}>
+              <span className="agent-status-dot agent-status-dot-busy" />
+              生成中…
+            </span>
+          )}
+          {mode === "cli" && sending && (
+            <Button size="small" danger icon={<StopOutlined />} onClick={() => void stopCli()}>
+              停止
+            </Button>
+          )}
+          {!offline && (
+            <Button
+              size="small"
+              icon={<SaveOutlined />}
+              onClick={saveSession}
+              disabled={items.length === 0 || sending}
+            >
+              存档
+            </Button>
+          )}
+        </div>
+
+        <div className="chat-flow">
+          {items.length === 0 ? (
+            <div className="chat-empty">
+              <div className="chat-empty-logo">T</div>
+              <div>
+                {mode === "gateway"
+                  ? "选择模型后开始对话，请求经服务端网关转发并计入用量"
+                  : "本地 CLI 模式：选择已安装的 CLI 与工作目录\n任务在本机执行（Kimi 走 ACP 长连接，Claude 走 stream-json）"}
+              </div>
+            </div>
+          ) : (
+            items.map((it, i) => (
+              <div key={i} className={`chat-row${it.role === "user" ? " chat-row-user" : ""}`}>
+                <div className={`chat-avatar${it.role === "assistant" ? " chat-avatar-ai" : ""}`}>
+                  {it.role === "user" ? "我" : "AI"}
+                </div>
+                <div className="chat-body">
+                  {it.thought && (
+                    <div className="thought-block">
+                      <div
+                        className="thought-head"
+                        onClick={() => setOpenThoughts((p) => ({ ...p, [i]: !p[i] }))}
+                      >
+                        <CloudOutlined />
+                        思考过程 · {it.thought.length} 字符
+                        <span style={{ marginLeft: "auto" }}>{openThoughts[i] ? "收起" : "展开"}</span>
+                      </div>
+                      {openThoughts[i] && <div className="thought-body">{it.thought}</div>}
+                    </div>
+                  )}
+                  {it.tools && it.tools.length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      {it.tools.map((t, ti) => (
+                        <div key={ti} className="tool-card">
+                          <span className={`tool-card-icon ${it.streaming ? "tool-card-run" : "tool-card-ok"}`}>
+                            {it.streaming ? "…" : <CheckOutlined />}
+                          </span>
+                          <span className="tool-card-name">{t}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="chat-bubble">
+                    {it.content}
+                    {it.streaming && <span className="chat-cursor">▍</span>}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="agent-inputbar">
+          <div className="agent-inputbox">
+            <Input.TextArea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onPressEnter={(e) => {
+                if (!e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
+              autoSize={{ minRows: 1, maxRows: 6 }}
+            />
+            <div className="agent-inputrow">
+              <Tag color={mode === "gateway" ? "geekblue" : "purple"} style={{ marginInlineEnd: 0 }}>
+                {mode === "gateway" ? `网关 · ${model ?? "未选模型"}` : `本地 · ${cli ?? "未选 CLI"}`}
+              </Tag>
+              {mode === "cli" && workdir && (
+                <span className="agent-topbar-path">{workdir}</span>
+              )}
+              <span style={{ flex: 1 }} />
+              {mode === "cli" && sending ? (
+                <button
+                  className="agent-send-btn agent-stop-btn"
+                  onClick={() => void stopCli()}
+                  title="停止"
+                >
+                  <StopOutlined />
+                </button>
+              ) : (
+                <button
+                  className="agent-send-btn"
+                  onClick={() => void send()}
+                  disabled={!cliReady || sending || !input.trim()}
+                  title="发送"
+                >
+                  <SendOutlined />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <Modal
         title="CLI 请求工具权限"
@@ -416,11 +527,9 @@ export default function AgentPage() {
           Claude 想要使用工具 <Tag color="orange">{permission?.toolName}</Tag>
         </p>
         {permission?.description && (
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-            {permission.description}
-          </Typography.Paragraph>
+          <p style={{ fontSize: 12, color: "#9a9aa0" }}>{permission.description}</p>
         )}
-        <p style={{ fontSize: 12, color: "#8c8c8c" }}>拒绝后本轮任务中该工具调用将被阻止。</p>
+        <p style={{ fontSize: 12, color: "#6d6d73" }}>拒绝后本轮任务中该工具调用将被阻止。</p>
       </Modal>
     </div>
   );

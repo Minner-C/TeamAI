@@ -1,4 +1,4 @@
-import { Layout, Menu } from "antd";
+import { Layout, Tooltip } from "antd";
 import {
   RobotOutlined,
   MessageOutlined,
@@ -18,7 +18,7 @@ import FilesPage from "./pages/FilesPage";
 import UsagePage from "./pages/UsagePage";
 import SettingsPage from "./pages/SettingsPage";
 
-const { Sider, Content } = Layout;
+const { Content } = Layout;
 
 const PAGES: Record<PageKey, React.ReactNode> = {
   agent: <AgentPage />,
@@ -30,12 +30,18 @@ const PAGES: Record<PageKey, React.ReactNode> = {
   settings: <SettingsPage />,
 };
 
+interface RailItem {
+  key: PageKey;
+  icon: React.ReactNode;
+  label: string;
+}
+
 export default function App() {
-  const { page, setPage, token, offline } = useAppStore();
+  const { page, setPage, token, offline, user } = useAppStore();
 
   if (!token && !offline) return <LoginPage />;
 
-  const items = offline
+  const items: RailItem[] = offline
     ? [
         { key: "agent", icon: <RobotOutlined />, label: "Agent 工作台（本地）" },
         { key: "settings", icon: <SettingOutlined />, label: "设置" },
@@ -51,20 +57,48 @@ export default function App() {
       ];
 
   const activePage: PageKey = offline && page !== "agent" && page !== "settings" ? "agent" : page;
+  const navItems = items.filter((i) => i.key !== "settings");
+  const settingsItem = items.find((i) => i.key === "settings");
+  const fullHeight = activePage === "agent" || activePage === "im";
 
   return (
-    <Layout className="app-shell">
-      <Sider width={200} theme="dark">
-        <div className="app-logo">TeamAI{offline ? "（离线）" : ""}</div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[activePage]}
-          onClick={(e) => setPage(e.key as PageKey)}
-          items={items}
-        />
-      </Sider>
-      <Content className="app-content">{PAGES[activePage]}</Content>
+    <Layout className="app-shell" style={{ flexDirection: "row" }}>
+      <div className="app-rail">
+        <Tooltip title={offline ? "TeamAI（离线模式）" : "TeamAI"} placement="right">
+          <div className="app-rail-logo">T</div>
+        </Tooltip>
+        {navItems.map((item) => (
+          <Tooltip key={item.key} title={item.label} placement="right">
+            <div
+              className={`app-rail-item${activePage === item.key ? " app-rail-item-active" : ""}`}
+              onClick={() => setPage(item.key)}
+            >
+              {item.icon}
+            </div>
+          </Tooltip>
+        ))}
+        <div className="app-rail-spacer" />
+        {settingsItem && (
+          <Tooltip title={settingsItem.label} placement="right">
+            <div
+              className={`app-rail-item${activePage === "settings" ? " app-rail-item-active" : ""}`}
+              onClick={() => setPage("settings")}
+            >
+              {settingsItem.icon}
+            </div>
+          </Tooltip>
+        )}
+        {user && (
+          <Tooltip title={user.name || user.email} placement="right">
+            <div className="app-rail-avatar" style={{ marginTop: 6 }}>
+              {(user.name || user.email).slice(0, 1).toUpperCase()}
+            </div>
+          </Tooltip>
+        )}
+      </div>
+      <Content className="app-content">
+        {fullHeight ? PAGES[activePage] : <div className="page-scroll">{PAGES[activePage]}</div>}
+      </Content>
     </Layout>
   );
 }

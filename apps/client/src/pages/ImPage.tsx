@@ -242,7 +242,7 @@ export default function ImPage() {
   }
 
   return (
-    <div className="page-card im-page">
+    <div className="im-page">
       <div className="im-sidebar">
         <div className="im-sidebar-header">
           <Typography.Text strong>会话</Typography.Text>
