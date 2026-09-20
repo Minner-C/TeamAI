@@ -2,6 +2,8 @@
   "name": "@teamai/client",
   "version": "0.1.0",
   "private": true,
+  "description": "TeamAI 桌面客户端 - 团队 AI 协作工作台",
+  "author": "TeamAI",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -10,20 +12,31 @@
     "build:electron": "node scripts/build-electron.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:dir": "npm run build && electron-builder --dir",
     "dist:mac": "npm run build && electron-builder --mac"
   },
   "build": {
     "appId": "com.teamai.client",
     "productName": "TeamAI",
-    "directories": { "output": "release" },
-    "files": ["dist", "dist-electron", "package.json"],
+    "copyright": "Copyright © 2026 TeamAI",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist", "dist-electron", "build", "package.json"],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "artifactName": "TeamAI-Setup-${version}.${ext}"
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "TeamAI-Portable-${version}.${ext}"
     },
     "nsis": {
+      "artifactName": "TeamAI-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
       "shortcutName": "TeamAI"
     },
     "mac": {
