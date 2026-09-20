@@ -105,9 +105,7 @@ const isElectron = typeof window !== "undefined" && !!window.teamai;
 
 let directToken = localStorage.getItem("teamai_token") ?? "";
 let imSocket: WebSocket | null = null;
-let directBaseUrl = isElectron
-  ? (localStorage.getItem("teamai_server_url") ?? "http://localhost:8787")
-  : "";
+let directBaseUrl = isElectron ? (localStorage.getItem("teamai_server_url") ?? "") : "";
 
 type ChunkHandler = (chunk: ChatChunk) => void;
 const chunkHandlers = new Set<ChunkHandler>();
@@ -125,6 +123,10 @@ async function directFetch(path: string, init?: RequestInit): Promise<Response> 
 
 export const api = {
   isElectron,
+
+  getServerUrl(): string {
+    return directBaseUrl;
+  },
 
   async setServerUrl(url: string): Promise<void> {
     localStorage.setItem("teamai_server_url", url);

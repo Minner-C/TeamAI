@@ -35,7 +35,7 @@ interface CliInfoItem {
 export default function AgentPage() {
   const [models, setModels] = useState<Array<{ model: string; providerType: string }>>([]);
   const [model, setModel] = useState<string>();
-  const [mode, setMode] = useState<"gateway" | "cli">("gateway");
+  const [mode, setMode] = useState<"gateway" | "cli">(useAppStore.getState().offline ? "cli" : "gateway");
   const [clis, setClis] = useState<CliInfoItem[]>([]);
   const [cli, setCli] = useState<string>();
   const [workdir, setWorkdir] = useState("");
@@ -53,7 +53,7 @@ export default function AgentPage() {
   const requestIdRef = useRef(0);
   const taskIdRef = useRef("");
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { agentDraft, clearAgentDraft } = useAppStore();
+  const { agentDraft, clearAgentDraft, offline } = useAppStore();
 
   useEffect(() => {
     if (agentDraft) {
@@ -64,13 +64,15 @@ export default function AgentPage() {
   }, [agentDraft, clearAgentDraft]);
 
   useEffect(() => {
-    api
-      .listModels()
-      .then((list) => {
-        setModels(list);
-        if (list.length > 0) setModel(list[0].model);
-      })
-      .catch((err) => message.error(`获取模型列表失败：${err.message}`));
+    if (!offline) {
+      api
+        .listModels()
+        .then((list) => {
+          setModels(list);
+          if (list.length > 0) setModel(list[0].model);
+        })
+        .catch((err) => message.error(`获取模型列表失败：${err.message}`));
+    }
     if (api.isElectron) {
       api.detectClis().then((list) => {
         const installed = list.filter((c) => c.installed && (c.kind === "kimi" || c.kind === "claude"));
@@ -178,6 +180,10 @@ export default function AgentPage() {
       return;
     }
     if (!model) return;
+    if (offline) {
+      message.warning("网关模式需要连接服务端");
+      return;
+    }
     setInput("");
     setSending(true);
     const history: ChatItem[] = [
@@ -255,7 +261,7 @@ export default function AgentPage() {
             buttonStyle="solid"
             size="small"
             options={[
-              { value: "gateway", label: "网关模型" },
+              { value: "gateway", label: "网关模型", disabled: offline },
               { value: "cli", label: "本地 CLI" },
             ]}
           />
@@ -305,12 +311,16 @@ export default function AgentPage() {
             停止
           </Button>
         )}
-        <Button size="small" onClick={saveSession} disabled={items.length === 0 || sending}>
-          保存会话
-        </Button>
-        <Button size="small" onClick={() => void openSessions()}>
-          会话存档
-        </Button>
+        {!offline && (
+          <>
+            <Button size="small" onClick={saveSession} disabled={items.length === 0 || sending}>
+              保存会话
+            </Button>
+            <Button size="small" onClick={() => void openSessions()}>
+              会话存档
+            </Button>
+          </>
+        )}
       </Space>
 
       <div className="chat-history">

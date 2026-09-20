@@ -12,7 +12,7 @@ interface CliRow {
 }
 
 export default function SettingsPage() {
-  const { serverUrl, setServerUrl, user, logout } = useAppStore();
+  const { serverUrl, setServerUrl, user, logout, setOffline } = useAppStore();
   const [clis, setClis] = useState<CliRow[]>([]);
 
   useEffect(() => {
@@ -27,13 +27,27 @@ export default function SettingsPage() {
     <div className="page-card">
       <Typography.Title level={3}>设置</Typography.Title>
       <Form layout="vertical" style={{ maxWidth: 480 }}>
-        <Form.Item label="服务端地址">
-          <Input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+        <Form.Item label="服务端地址" extra="客户端与服务端是连接关系：地址保存在本机，可随时修改；留空则仅使用本地功能">
+          <Input
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value.trim().replace(/\/+$/, ""))}
+            placeholder="http://192.168.1.10:8787"
+          />
         </Form.Item>
-        <Form.Item label="当前用户">
-          <Input value={`${user?.name ?? ""}（${user?.email ?? ""}）`} disabled />
-        </Form.Item>
-        <Button onClick={logout}>退出登录</Button>
+        {user ? (
+          <>
+            <Form.Item label="当前用户">
+              <Input value={`${user.name}（${user.email}）`} disabled />
+            </Form.Item>
+            <Button onClick={logout}>退出登录</Button>
+          </>
+        ) : (
+          <Form.Item label="连接状态">
+            <Button type="primary" onClick={() => setOffline(false)}>
+              连接服务端并登录
+            </Button>
+          </Form.Item>
+        )}
       </Form>
 
       {user?.role === "admin" && (

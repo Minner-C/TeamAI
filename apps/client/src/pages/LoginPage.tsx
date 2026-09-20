@@ -1,16 +1,25 @@
 import { useState } from "react";
-import { Button, Card, Form, Input, Typography, message } from "antd";
+import { Button, Card, Divider, Form, Input, Typography, message } from "antd";
+import { ApiOutlined, DesktopOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/appStore";
 import { api } from "../api";
 
 export default function LoginPage() {
-  const { serverUrl, setAuth } = useAppStore();
+  const { serverUrl, setServerUrl, setAuth, setOffline } = useAppStore();
   const [loading, setLoading] = useState(false);
 
-  async function onFinish(values: { email: string; password: string }) {
+  async function onFinish(values: { email: string; password: string; server?: string }) {
+    const server = (values.server ?? "").trim().replace(/\/+$/, "");
+    if (api.isElectron && !server) {
+      message.warning("请填写服务端地址，或选择离线模式");
+      return;
+    }
     setLoading(true);
     try {
-      await api.setServerUrl(serverUrl);
+      if (api.isElectron) {
+        setServerUrl(server);
+        await api.setServerUrl(server);
+      }
       const { token, user } = await api.login(values.email, values.password);
       setAuth(token, user);
       message.success(`欢迎，${user.name}`);
@@ -23,24 +32,52 @@ export default function LoginPage() {
 
   return (
     <div className="login-wrap">
-      <Card style={{ width: 380 }}>
+      <Card style={{ width: 400 }}>
         <Typography.Title level={3} style={{ textAlign: "center" }}>
-          TeamAI 登录
+          TeamAI
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ textAlign: "center" }}>
-          {api.isElectron ? serverUrl : "浏览器预览模式（经 Vite 代理连接服务端）"}
+          {api.isElectron
+            ? "连接到团队的 TeamAI 服务端"
+            : "浏览器模式（与当前站点同源，无需配置地址）"}
         </Typography.Paragraph>
-        <Form layout="vertical" onFinish={onFinish}>
+        <Form
+          layout="vertical"
+          onFinish={onFinish}
+          initialValues={{ server: serverUrl }}
+        >
+          {api.isElectron && (
+            <Form.Item
+              label="服务端地址"
+              name="server"
+              rules={[{ required: true, message: "请输入服务端地址" }]}
+            >
+              <Input placeholder="http://192.168.1.10:8787" prefix={<ApiOutlined />} />
+            </Form.Item>
+          )}
           <Form.Item label="邮箱" name="email" rules={[{ required: true, message: "请输入邮箱" }]}>
-            <Input placeholder="admin@teamai.local" autoFocus />
+            <Input placeholder="admin@teamai.local" autoFocus={!api.isElectron} />
           </Form.Item>
           <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
             <Input.Password />
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>
-            登录
+            连接并登录
           </Button>
         </Form>
+        {api.isElectron && (
+          <>
+            <Divider plain style={{ margin: "16px 0 12px" }}>
+              或
+            </Divider>
+            <Button block icon={<DesktopOutlined />} onClick={() => setOffline(true)}>
+              暂不连接，仅使用本地 Agent CLI
+            </Button>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
+              离线模式下客户端独立运行：本地 CLI（Kimi / Claude）可直接使用，团队消息、仓库等功能将在连接服务端后可用。
+            </Typography.Paragraph>
+          </>
+        )}
       </Card>
     </div>
   );

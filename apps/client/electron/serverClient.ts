@@ -4,9 +4,13 @@ export interface ServerConnection {
 }
 
 let connection: ServerConnection = {
-  baseUrl: process.env.TEAMAI_SERVER_URL ?? "http://localhost:8787",
+  baseUrl: process.env.TEAMAI_SERVER_URL ?? "",
   token: null,
 };
+
+function ensureBaseUrl(): void {
+  if (!connection.baseUrl) throw new Error("未配置服务端地址，请先连接服务端");
+}
 
 export function getConnection(): ServerConnection {
   return connection;
@@ -22,6 +26,7 @@ export interface LoginResult {
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
+  ensureBaseUrl();
   const res = await fetch(`${connection.baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
