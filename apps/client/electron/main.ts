@@ -31,7 +31,15 @@ async function createWindow() {
     await win.loadURL(process.env.VITE_DEV_SERVER_URL ?? "http://localhost:5173");
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    await win.loadFile(path.join(__dirname, "../dist/index.html"));
+    const indexHtml = path.join(__dirname, "../dist/index.html");
+    win.webContents.on("did-fail-load", (_e, code, desc) => {
+      win.webContents
+        .executeJavaScript(
+          `document.body.innerHTML = '<div style="color:#ddd;font:14px sans-serif;padding:40px">界面加载失败（${code}）：${desc}<br/>请尝试重新安装 TeamAI。</div>'`,
+        )
+        .catch(() => undefined);
+    });
+    await win.loadFile(indexHtml);
   }
 }
 

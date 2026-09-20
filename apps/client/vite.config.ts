@@ -5,6 +5,7 @@ const serverTarget = process.env.TEAMAI_SERVER ?? "http://localhost:8787";
 
 export default defineConfig({
   plugins: [react()],
+  base: "./",
   server: {
     port: 5173,
     strictPort: true,
