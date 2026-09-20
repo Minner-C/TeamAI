@@ -94,6 +94,13 @@ export interface FileInfo {
   size: number;
 }
 
+export interface FileView extends FileInfo {
+  createdAt: number;
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+}
+
 const isElectron = typeof window !== "undefined" && !!window.teamai;
 
 let directToken = localStorage.getItem("teamai_token") ?? "";
@@ -364,6 +371,15 @@ export const api = {
 
   fileUrl(fileId: string): string {
     return `${directBaseUrl}/api/files/${fileId}?token=${encodeURIComponent(directToken)}`;
+  },
+
+  async listFiles(): Promise<{ files: FileView[]; admin: boolean }> {
+    const res = await directFetch("/api/files");
+    return res.json();
+  },
+
+  async deleteFile(fileId: string): Promise<void> {
+    await directFetch(`/api/files/${fileId}`, { method: "DELETE" });
   },
 
   async listEnvs(): Promise<EnvView[]> {

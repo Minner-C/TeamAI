@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api, type SessionUser } from "../api";
 
-export type PageKey = "agent" | "im" | "repos" | "envs" | "usage" | "settings";
+export type PageKey = "agent" | "im" | "repos" | "envs" | "files" | "usage" | "settings";
 
 interface AppState {
   serverUrl: string;

@@ -4,6 +4,7 @@ import {
   MessageOutlined,
   FolderOutlined,
   CloudServerOutlined,
+  FileZipOutlined,
   BarChartOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
@@ -13,6 +14,7 @@ import AgentPage from "./pages/AgentPage";
 import ImPage from "./pages/ImPage";
 import ReposPage from "./pages/ReposPage";
 import EnvsPage from "./pages/EnvsPage";
+import FilesPage from "./pages/FilesPage";
 import UsagePage from "./pages/UsagePage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -23,6 +25,7 @@ const PAGES: Record<PageKey, React.ReactNode> = {
   im: <ImPage />,
   repos: <ReposPage />,
   envs: <EnvsPage />,
+  files: <FilesPage />,
   usage: <UsagePage />,
   settings: <SettingsPage />,
 };
@@ -46,6 +49,7 @@ export default function App() {
             { key: "im", icon: <MessageOutlined />, label: "团队消息" },
             { key: "repos", icon: <FolderOutlined />, label: "项目仓库" },
             { key: "envs", icon: <CloudServerOutlined />, label: "在线环境" },
+            { key: "files", icon: <FileZipOutlined />, label: "文件管理" },
             { key: "usage", icon: <BarChartOutlined />, label: "用量统计" },
             { key: "settings", icon: <SettingOutlined />, label: "设置" },
           ]}

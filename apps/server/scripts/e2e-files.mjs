@@ -130,6 +130,55 @@ try {
     body: Buffer.alloc(21 * 1024 * 1024, 1),
   });
   check("超限文件被拒（>20MB）", tooBig.status === 413, `status=${tooBig.status}`);
+
+  const memberLogin = await (
+    await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "member@teamai.local", password: "member123" }),
+    })
+  ).json();
+  const memberToken = memberLogin.token;
+  const memberH = { "content-type": "application/json", authorization: `Bearer ${memberToken}` };
+  check("成员登录", !!memberToken);
+
+  const memberUp = await fetch(`${BASE}/api/files`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${memberToken}`, "content-type": "text/plain", "x-file-name": "note.txt" },
+    body: "hello from member",
+  });
+  const memberFile = await memberUp.json();
+  check("成员上传文件", memberUp.status === 201 && !!memberFile.id);
+
+  const memberList = await (await fetch(`${BASE}/api/files`, { headers: memberH })).json();
+  check(
+    "成员列表仅含自己的文件",
+    memberList.files.length === 1 && memberList.files[0].id === memberFile.id && memberList.admin === false,
+    JSON.stringify(memberList),
+  );
+
+  const adminList = await (await fetch(`${BASE}/api/files?all=1`, { headers: authH })).json();
+  check(
+    "管理员列表含全部文件且带上传者信息",
+    adminList.admin === true &&
+      adminList.files.length === 2 &&
+      adminList.files.every((f) => f.ownerName && f.createdAt),
+    JSON.stringify(adminList.files),
+  );
+
+  const denyDel = await fetch(`${BASE}/api/files/${file.id}`, { method: "DELETE", headers: memberH });
+  check("成员删除他人文件被拒", denyDel.status === 403, `status=${denyDel.status}`);
+
+  const memberDel = await fetch(`${BASE}/api/files/${memberFile.id}`, { method: "DELETE", headers: memberH });
+  const afterMemberDel = await fetch(`${BASE}/api/files/${memberFile.id}`, { headers: memberH });
+  check("成员删除自己的文件", memberDel.status === 200 && afterMemberDel.status === 404);
+
+  const adminDel = await fetch(`${BASE}/api/files/${file.id}`, { method: "DELETE", headers: authH });
+  const afterAdminDel = await fetch(`${BASE}/api/files/${file.id}`, { headers: authH });
+  check("管理员删除成员文件", adminDel.status === 200 && afterAdminDel.status === 404);
+
+  const audit = await (await fetch(`${BASE}/api/admin/audit?limit=50`, { headers: authH })).json();
+  check("审计含 file.delete", audit.logs.filter((l) => l.action === "file.delete").length >= 2);
 } finally {
   server.kill("SIGTERM");
   fs.rmSync(dataDir, { recursive: true, force: true });
