@@ -11,6 +11,7 @@ let connection: ServerConnection = {
 function normalizeBaseUrl(url: string): string {
   let u = url.trim().replace(/\/+$/, "");
   if (u && !/^https?:\/\//i.test(u)) u = `http://${u}`;
+  u = u.replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
   return u;
 }
 

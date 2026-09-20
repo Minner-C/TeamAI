@@ -154,6 +154,7 @@ export const api = {
   async setServerUrl(url: string): Promise<void> {
     let u = url.trim().replace(/\/+$/, "");
     if (u && !/^https?:\/\//i.test(u)) u = `http://${u}`;
+    u = u.replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
     localStorage.setItem("teamai_server_url", u);
     if (isElectron) {
       await window.teamai.setServerUrl(u);
@@ -234,6 +235,16 @@ export const api = {
     const res = await directFetch(`/api/usage/stats${qs.size ? `?${qs}` : ""}`);
     if (!res.ok) throw new Error(`获取用量统计失败：${res.status}`);
     return res.json() as Promise<UsageStats>;
+  },
+
+  async checkServerHealth(): Promise<boolean> {
+    try {
+      if (isElectron) return await window.teamai.serverHealth();
+      const res = await fetch("/health");
+      return res.ok;
+    } catch {
+      return false;
+    }
   },
 
   async detectClis() {

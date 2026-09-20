@@ -6,7 +6,26 @@ import { api } from "../api";
 
 export default function LoginPage() {
   const { serverUrl, setServerUrl, setAuth, setOffline } = useAppStore();
+  const [form] = Form.useForm<{ email: string; password: string; server?: string }>();
   const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  async function testConnection() {
+    const input = (form.getFieldValue("server") ?? serverUrl).trim();
+    if (!input) {
+      message.warning("请先填写服务端地址");
+      return;
+    }
+    setTesting(true);
+    try {
+      await api.setServerUrl(input);
+      const ok = await api.checkServerHealth();
+      if (ok) message.success("连接成功，服务端在线");
+      else message.error("连接失败：服务端无响应，请确认地址正确且服务端已启动");
+    } finally {
+      setTesting(false);
+    }
+  }
 
   async function onFinish(values: { email: string; password: string; server?: string }) {
     const server = (values.server ?? "").trim().replace(/\/+$/, "");
@@ -41,6 +60,7 @@ export default function LoginPage() {
             : "浏览器模式（与当前站点同源，无需配置地址）"}
         </div>
         <Form
+          form={form}
           layout="vertical"
           onFinish={onFinish}
           initialValues={{ server: serverUrl }}
@@ -50,6 +70,11 @@ export default function LoginPage() {
               label="服务端地址"
               name="server"
               rules={[{ required: true, message: "请输入服务端地址" }]}
+              extra={
+                <Button size="small" type="link" style={{ padding: 0 }} loading={testing} onClick={() => void testConnection()}>
+                  测试连接
+                </Button>
+              }
             >
               <Input placeholder="http://192.168.1.10:8787" prefix={<ApiOutlined />} />
             </Form.Item>
