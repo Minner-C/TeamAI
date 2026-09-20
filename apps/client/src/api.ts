@@ -152,10 +152,12 @@ export const api = {
   },
 
   async setServerUrl(url: string): Promise<void> {
-    localStorage.setItem("teamai_server_url", url);
+    let u = url.trim().replace(/\/+$/, "");
+    if (u && !/^https?:\/\//i.test(u)) u = `http://${u}`;
+    localStorage.setItem("teamai_server_url", u);
     if (isElectron) {
-      await window.teamai.setServerUrl(url);
-      directBaseUrl = url;
+      await window.teamai.setServerUrl(u);
+      directBaseUrl = u;
     } else {
       directBaseUrl = "";
     }

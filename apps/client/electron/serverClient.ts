@@ -8,8 +8,27 @@ let connection: ServerConnection = {
   token: null,
 };
 
+function normalizeBaseUrl(url: string): string {
+  let u = url.trim().replace(/\/+$/, "");
+  if (u && !/^https?:\/\//i.test(u)) u = `http://${u}`;
+  return u;
+}
+
 function ensureBaseUrl(): void {
   if (!connection.baseUrl) throw new Error("未配置服务端地址，请先连接服务端");
+}
+
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(
+        `无法连接服务端（${connection.baseUrl}）。请检查：1) 地址是否填写正确；2) 服务端是否已启动；3) 网络或防火墙是否放行。`,
+      );
+    }
+    throw err;
+  }
 }
 
 export function getConnection(): ServerConnection {
@@ -17,7 +36,7 @@ export function getConnection(): ServerConnection {
 }
 
 export function setConnection(baseUrl: string, token: string | null): void {
-  connection = { baseUrl, token };
+  connection = { baseUrl: normalizeBaseUrl(baseUrl), token };
 }
 
 export interface LoginResult {
@@ -27,7 +46,7 @@ export interface LoginResult {
 
 export async function login(email: string, password: string): Promise<LoginResult> {
   ensureBaseUrl();
-  const res = await fetch(`${connection.baseUrl}/api/auth/login`, {
+  const res = await safeFetch(`${connection.baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -44,7 +63,7 @@ export async function login(email: string, password: string): Promise<LoginResul
 export async function listModels(): Promise<
   Array<{ model: string; providerId: string; providerType: string }>
 > {
-  const res = await fetch(`${connection.baseUrl}/api/models`, {
+  const res = await safeFetch(`${connection.baseUrl}/api/models`, {
     headers: { authorization: `Bearer ${connection.token ?? ""}` },
   });
   if (!res.ok) throw new Error(`list models failed: ${res.status}`);
@@ -65,7 +84,7 @@ export async function chatStream(
   onDelta: (text: string) => void,
   cliTag = "teamai-client",
 ): Promise<void> {
-  const res = await fetch(`${connection.baseUrl}/v1/chat/completions`, {
+  const res = await safeFetch(`${connection.baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -114,7 +133,7 @@ export interface UsageSummary {
 }
 
 export async function usageSummary(): Promise<UsageSummary> {
-  const res = await fetch(`${connection.baseUrl}/api/usage/summary`, {
+  const res = await safeFetch(`${connection.baseUrl}/api/usage/summary`, {
     headers: { authorization: `Bearer ${connection.token ?? ""}` },
   });
   if (!res.ok) throw new Error(`usage summary failed: ${res.status}`);
@@ -132,7 +151,7 @@ export interface RepoView {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${connection.baseUrl}${path}`, {
+  const res = await safeFetch(`${connection.baseUrl}${path}`, {
     ...init,
     headers: {
       authorization: `Bearer ${connection.token ?? ""}`,
@@ -193,7 +212,7 @@ export function gitRemoteUrl(group: string, name: string, email: string): string
 
 export async function checkServerHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${connection.baseUrl}/health`);
+    const res = await safeFetch(`${connection.baseUrl}/health`);
     return res.ok;
   } catch {
     return false;
