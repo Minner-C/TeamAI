@@ -55,6 +55,29 @@ export interface SessionView {
   createdAt: number;
 }
 
+export interface UsageBucket {
+  tokensIn: number;
+  tokensOut: number;
+  cost: number;
+  requests: number;
+}
+
+export interface UsageDimRow {
+  name: string;
+  tokensIn: number;
+  tokensOut: number;
+}
+
+export interface UsageStats {
+  range: UsageBucket;
+  today: UsageBucket;
+  week: UsageBucket;
+  byDay: Array<{ day: string; tokens: number }>;
+  byModel: UsageDimRow[];
+  byUser: Array<UsageDimRow & { userId: string }>;
+  byCli: UsageDimRow[];
+}
+
 export interface AiRoleView {
   id: string;
   channel_id: string;
@@ -199,6 +222,16 @@ export const api = {
       byModel: Record<string, { tokensIn: number; tokensOut: number }>;
       byUser: Record<string, { tokensIn: number; tokensOut: number }>;
     }>;
+  },
+
+  async usageStats(params?: { from?: number; to?: number; userId?: string }): Promise<UsageStats> {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", String(params.from));
+    if (params?.to) qs.set("to", String(params.to));
+    if (params?.userId) qs.set("userId", params.userId);
+    const res = await directFetch(`/api/usage/stats${qs.size ? `?${qs}` : ""}`);
+    if (!res.ok) throw new Error(`获取用量统计失败：${res.status}`);
+    return res.json() as Promise<UsageStats>;
   },
 
   async detectClis() {
