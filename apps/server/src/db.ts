@@ -142,6 +142,13 @@ CREATE TABLE IF NOT EXISTS files (
   path TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS departments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  parent_id TEXT,
+  sort INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 `;
 
 export function openDb(config: ServerConfig): Db {
@@ -161,6 +168,9 @@ function migrate(db: Db) {
   };
   addColumn("repos", "visibility", "visibility TEXT NOT NULL DEFAULT 'team'");
   addColumn("ai_roles", "trigger_keywords", "trigger_keywords TEXT NOT NULL DEFAULT ''");
+  addColumn("users", "department_id", "department_id TEXT");
+  addColumn("users", "title", "title TEXT NOT NULL DEFAULT ''");
+  addColumn("channels", "topic", "topic TEXT NOT NULL DEFAULT ''");
 }
 
 function seedAdmin(db: Db) {

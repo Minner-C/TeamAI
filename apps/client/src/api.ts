@@ -35,10 +35,39 @@ export interface ChannelMember {
   email: string;
 }
 
+export interface Department {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  sort: number;
+  created_at: number;
+}
+
+export interface OrgUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  title: string;
+  department_id: string | null;
+}
+
+export interface ChannelFile {
+  id: string;
+  fileId: string;
+  name: string;
+  size: number;
+  mime: string;
+  type: string;
+  senderName: string;
+  createdAt: number;
+}
+
 export interface ChannelView {
   id: string;
   type: "dm" | "group";
   name: string;
+  topic: string;
   ownerId: string;
   createdAt: number;
   unread: number;
@@ -344,10 +373,41 @@ export const api = {
     return ((await res.json()) as { channels: ChannelView[] }).channels;
   },
 
-  async createChannel(input: { type: "dm" | "group"; name?: string; memberIds: string[] }) {
+  async createChannel(input: { type: "dm" | "group"; name?: string; topic?: string; memberIds: string[] }) {
     const res = await directFetch("/api/channels", { method: "POST", body: JSON.stringify(input) });
     if (!res.ok) throw new Error(`创建会话失败：${await res.text()}`);
     return res.json() as Promise<{ id: string }>;
+  },
+
+  async updateChannel(id: string, patch: { name?: string; topic?: string }): Promise<ChannelView> {
+    const res = await directFetch(`/api/channels/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    if (!res.ok) throw new Error(`更新失败：${await res.text()}`);
+    return (await res.json()) as ChannelView;
+  },
+
+  async addChannelMembers(id: string, memberIds: string[]): Promise<void> {
+    const res = await directFetch(`/api/channels/${id}/members`, {
+      method: "POST",
+      body: JSON.stringify({ memberIds }),
+    });
+    if (!res.ok) throw new Error(`添加成员失败：${await res.text()}`);
+  },
+
+  async removeChannelMember(id: string, userId: string): Promise<void> {
+    const res = await directFetch(`/api/channels/${id}/members/${userId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`移除成员失败：${await res.text()}`);
+  },
+
+  async channelFiles(id: string): Promise<ChannelFile[]> {
+    const res = await directFetch(`/api/channels/${id}/files`);
+    if (!res.ok) throw new Error(`获取群文件失败：${res.status}`);
+    return ((await res.json()) as { files: ChannelFile[] }).files;
+  },
+
+  async orgTree(): Promise<{ departments: Department[]; users: OrgUser[] }> {
+    const res = await directFetch("/api/org/tree");
+    if (!res.ok) throw new Error(`获取组织架构失败：${res.status}`);
+    return (await res.json()) as { departments: Department[]; users: OrgUser[] };
   },
 
   async listMessages(channelId: string, before?: number): Promise<ImMessage[]> {

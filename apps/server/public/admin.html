@@ -251,6 +251,7 @@ const NAV = [
   ["usage", "用量总览"],
   ["providers", "模型 Provider"],
   ["keys", "虚拟 Key"],
+  ["org", "组织架构"],
   ["users", "成员"],
   ["repos", "Git 仓库"],
   ["envs", "在线环境"],
@@ -281,6 +282,7 @@ async function renderTab() {
     if (tab === "usage") await renderUsage(c);
     else if (tab === "providers") await renderProviders(c);
     else if (tab === "keys") await renderKeys(c);
+    else if (tab === "org") await renderOrg(c);
     else if (tab === "users") await renderUsers(c);
     else if (tab === "repos") await renderRepos(c);
     else if (tab === "envs") await renderEnvs(c);
@@ -472,6 +474,102 @@ async function renderKeys(c) {
     }, "吊销")));
 }
 
+/* ---------- 组织架构 ---------- */
+async function renderOrg(c) {
+  const { departments, users } = await req("/api/org/tree");
+  const byParent = new Map();
+  departments.forEach((d) => {
+    const k = d.parent_id || "";
+    if (!byParent.has(k)) byParent.set(k, []);
+    byParent.get(k).push(d);
+  });
+  const userCount = (deptId) => users.filter((u) => u.department_id === deptId).length;
+  function renderDeptRows(parentId, depth) {
+    return (byParent.get(parentId) || []).map((d) => `
+      <tr>
+        <td><span style="padding-left:${depth * 22}px">${depth ? "└ " : ""}<b>${esc(d.name)}</b></span></td>
+        <td>${userCount(d.id)} 人</td>
+        <td>${fmtTime(d.created_at)}</td>
+        <td>
+          <button class="btn sm ghost" data-add-child="${d.id}" data-name="${esc(d.name)}">加子部门</button>
+          <button class="btn sm ghost" data-rename="${d.id}" data-name="${esc(d.name)}">重命名</button>
+          <button class="btn sm danger" data-del-dept="${d.id}" data-name="${esc(d.name)}">删除</button>
+        </td>
+      </tr>${renderDeptRows(d.id, depth + 1)}`).join("");
+  }
+  const deptOptions = (selected) =>
+    `<option value="">（未分配）</option>` +
+    departments.map((d) => `<option value="${d.id}" ${d.id === selected ? "selected" : ""}>${esc(d.name)}</option>`).join("");
+  const unassigned = users.filter((u) => !u.department_id);
+  const userRows = users.map((u) => `
+    <tr>
+      <td><b>${esc(u.name)}</b></td>
+      <td>${esc(u.email)}</td>
+      <td><input data-title-of="${u.id}" value="${esc(u.title || "")}" placeholder="如：前端工程师" style="width:140px" /></td>
+      <td><select data-dept-of="${u.id}">${deptOptions(u.department_id)}</select></td>
+      <td><button class="btn sm" data-save-user="${u.id}">保存</button></td>
+    </tr>`).join("");
+  c.innerHTML = `
+    ${pageHead("组织架构", "部门树 + 成员归属；客户端「通讯录」按此结构展示，点击成员即可发起单聊")}
+    <div class="bar"><button class="btn" id="add-dept">新建一级部门</button></div>
+    <div class="card"><h3>部门树 <span class="sub">${departments.length} 个部门</span></h3>
+      <table><thead><tr><th>部门</th><th>人数</th><th>创建时间</th><th></th></tr></thead>
+      <tbody>${renderDeptRows("", 0) || '<tr><td colspan="4" class="empty">暂无部门，点击右上角「新建一级部门」开始搭建组织架构</td></tr>'}</tbody></table>
+    </div>
+    <div class="card"><h3>成员归属 <span class="sub">${unassigned.length} 人未分配部门</span></h3>
+      <table><thead><tr><th>姓名</th><th>邮箱</th><th>职位</th><th>部门</th><th></th></tr></thead>
+      <tbody>${userRows}</tbody></table>
+    </div>`;
+  const createDept = (parentId, parentName) => {
+    openModal({
+      title: parentId ? `在「${parentName}」下新建子部门` : "新建一级部门",
+      okText: "创建",
+      body: field("部门名称", '<input id="m-d-name" placeholder="如：研发部" />'),
+      onOk: async (b) => {
+        const name = $("#m-d-name", b).value.trim();
+        if (!name) { toast("请输入部门名称", "err"); return false; }
+        await req("/api/admin/departments", { method: "POST", body: JSON.stringify({ name, parentId }) });
+        toast("部门已创建");
+        renderTab();
+      },
+    });
+  };
+  $("#add-dept").onclick = () => createDept(null);
+  $$("[data-add-child]", c).forEach((btn) => (btn.onclick = () => createDept(btn.dataset.addChild, btn.dataset.name)));
+  $$("[data-rename]", c).forEach((btn) => (btn.onclick = () => {
+    openModal({
+      title: `重命名「${btn.dataset.name}」`,
+      okText: "保存",
+      body: field("新名称", `<input id="m-d-rename" value="${esc(btn.dataset.name)}" />`),
+      onOk: async (b) => {
+        const name = $("#m-d-rename", b).value.trim();
+        if (!name) { toast("请输入名称", "err"); return false; }
+        await req(`/api/admin/departments/${btn.dataset.rename}`, { method: "PATCH", body: JSON.stringify({ name }) });
+        toast("已重命名");
+        renderTab();
+      },
+    });
+  }));
+  $$("[data-del-dept]", c).forEach((btn) => (btn.onclick = () =>
+    confirmBox("删除部门", `删除「${btn.dataset.name}」？部门内仍有成员或子部门时会被拒绝。`, async () => {
+      try {
+        await req(`/api/admin/departments/${btn.dataset.delDept}`, { method: "DELETE" });
+        toast("已删除");
+        renderTab();
+      } catch (e) { toast(e.message, "err", 3600); }
+    })));
+  $$("[data-save-user]", c).forEach((btn) => (btn.onclick = async () => {
+    const uid = btn.dataset.saveUser;
+    const title = $(`[data-title-of="${uid}"]`, c).value.trim();
+    const departmentId = $(`[data-dept-of="${uid}"]`, c).value || null;
+    try {
+      await req(`/api/admin/users/${uid}`, { method: "PATCH", body: JSON.stringify({ title, departmentId }) });
+      toast("已保存");
+      renderTab();
+    } catch (e) { toast(e.message, "err", 3600); }
+  }));
+}
+
 /* ---------- 成员 ---------- */
 async function renderUsers(c) {
   const { users } = await req("/api/users");
@@ -479,14 +577,16 @@ async function renderUsers(c) {
     <tr>
       <td><b>${esc(u.name)}</b></td>
       <td>${esc(u.email)}</td>
+      <td>${esc(u.department_name || "—")}</td>
+      <td>${esc(u.title || "—")}</td>
       <td><span class="tag ${u.role === "admin" ? "on" : ""}">${esc(u.role)}</span></td>
       <td>${fmtTime(u.created_at)}</td>
     </tr>`).join("");
   c.innerHTML = `
-    ${pageHead("成员", "团队成员账号，创建后即可登录客户端")}
+    ${pageHead("成员", "团队成员账号，创建后即可登录客户端；部门与职位请在「组织架构」页维护")}
     <div class="bar"><button class="btn" id="add-user">添加成员</button></div>
     <div class="card"><h3>成员列表 <span class="sub">${users.length} 人</span></h3>
-      <table><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>加入时间</th></tr></thead>
+      <table><thead><tr><th>姓名</th><th>邮箱</th><th>部门</th><th>职位</th><th>角色</th><th>加入时间</th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>`;
   $("#add-user").onclick = () => {

@@ -1161,3 +1161,170 @@ body,
 .im-emoji:hover {
   background: #2e2e33;
 }
+
+/* ---------- IM org / contacts / drawer ---------- */
+
+.im-side-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #222224;
+}
+
+.im-side-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #8a8a91;
+  font-size: 13px;
+  padding: 6px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.im-side-tab:hover {
+  background: #1f1f22;
+  color: #c9c9ce;
+}
+
+.im-side-tab-on,
+.im-side-tab-on:hover {
+  background: #26262b;
+  color: #e8e8ea;
+  font-weight: 500;
+}
+
+.im-org-dept {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #c9c9ce;
+  font-size: 13px;
+  user-select: none;
+}
+
+.im-org-dept:hover {
+  background: #1f1f22;
+}
+
+.im-org-arrow {
+  font-size: 10px;
+  color: #6b6b72;
+  transition: transform 0.15s;
+}
+
+.im-org-dept-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.im-org-count {
+  font-size: 11px;
+  color: #5d5d64;
+}
+
+.im-org-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.im-org-user:hover {
+  background: #1f1f22;
+}
+
+.im-org-user-info {
+  min-width: 0;
+}
+
+.im-org-user-name {
+  font-size: 13px;
+  color: #e0e0e4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.im-org-user-title {
+  font-size: 11px;
+  color: #7a7a80;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.im-org-me {
+  font-size: 10px;
+  color: #8b8b92;
+  background: #2b2b2e;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.im-org-hint {
+  text-align: center;
+  font-size: 11px;
+  color: #5d5d64;
+  padding: 14px 0;
+}
+
+.im-header-topic {
+  max-width: 320px;
+  font-size: 12px;
+  color: #8a8a91;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 1px solid #34343a;
+  padding-left: 8px;
+}
+
+.im-member-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.im-member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  border-radius: 8px;
+}
+
+.im-member-row:hover {
+  background: #26262b;
+}
+
+.im-member-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.im-member-name {
+  font-size: 13px;
+  color: #e0e0e4;
+  display: flex;
+  align-items: center;
+}
+
+.im-member-email {
+  font-size: 11px;
+  color: #7a7a80;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

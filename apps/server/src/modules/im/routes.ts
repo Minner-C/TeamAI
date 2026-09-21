@@ -1,17 +1,21 @@
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../core/auth.js";
 import {
+  addChannelMembers,
   channelMembers,
   createChannel,
   createRole,
   deleteRole,
   insertMessage,
   isMember,
+  listChannelFiles,
   listMessages,
   listMyChannels,
   listRoles,
   markRead,
+  removeChannelMember,
   toMessageView,
+  updateChannel,
   updateRole,
 } from "./store.js";
 import { broadcastToChannel } from "./hub.js";
@@ -24,7 +28,7 @@ export async function imRoutes(app: FastifyInstance) {
 
   app.post("/channels", { preHandler: requireUser }, async (req, reply) => {
     const body = req.body as
-      | { type?: "dm" | "group"; name?: string; memberIds?: string[] }
+      | { type?: "dm" | "group"; name?: string; topic?: string; memberIds?: string[] }
       | undefined;
     if (!body?.type || !body.memberIds?.length) {
       return reply.code(400).send({ error: "type and memberIds required" });
@@ -33,6 +37,7 @@ export async function imRoutes(app: FastifyInstance) {
       const ch = createChannel(app.db, {
         type: body.type,
         name: body.name,
+        topic: body.topic,
         ownerId: req.user!.id,
         memberIds: body.memberIds,
       });
@@ -40,6 +45,46 @@ export async function imRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : "create failed" });
     }
+  });
+
+  app.patch("/channels/:id", { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!isMember(app.db, id, req.user!.id)) return reply.code(403).send({ error: "not a member" });
+    const body = req.body as { name?: string; topic?: string } | undefined;
+    if (!updateChannel(app.db, id, { name: body?.name, topic: body?.topic })) {
+      return reply.code(400).send({ error: "nothing to update" });
+    }
+    return app.db.prepare("SELECT id, type, name, topic, owner_id, created_at FROM channels WHERE id = ?").get(id);
+  });
+
+  app.post("/channels/:id/members", { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!isMember(app.db, id, req.user!.id)) return reply.code(403).send({ error: "not a member" });
+    const body = req.body as { memberIds?: string[] } | undefined;
+    if (!body?.memberIds?.length) return reply.code(400).send({ error: "memberIds required" });
+    addChannelMembers(app.db, id, body.memberIds);
+    return { ok: true };
+  });
+
+  app.delete("/channels/:id/members/:uid", { preHandler: requireUser }, async (req, reply) => {
+    const { id, uid } = req.params as { id: string; uid: string };
+    const ch = app.db.prepare("SELECT owner_id, type FROM channels WHERE id = ?").get(id) as
+      | { owner_id: string; type: string }
+      | undefined;
+    if (!ch) return reply.code(404).send({ error: "not found" });
+    if (ch.type !== "group") return reply.code(400).send({ error: "only group channels support member removal" });
+    if (req.user!.id !== ch.owner_id && req.user!.id !== uid && req.user!.role !== "admin") {
+      return reply.code(403).send({ error: "只有群主或管理员可以移除成员" });
+    }
+    if (uid === ch.owner_id) return reply.code(400).send({ error: "不能移除群主" });
+    if (!removeChannelMember(app.db, id, uid)) return reply.code(404).send({ error: "member not found" });
+    return { ok: true };
+  });
+
+  app.get("/channels/:id/files", { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!isMember(app.db, id, req.user!.id)) return reply.code(403).send({ error: "not a member" });
+    return { files: listChannelFiles(app.db, id) };
   });
 
   app.get("/channels/:id/messages", { preHandler: requireUser }, async (req, reply) => {

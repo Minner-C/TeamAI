@@ -6,6 +6,7 @@ export interface ChannelRow {
   id: string;
   type: "dm" | "group";
   name: string;
+  topic: string;
   owner_id: string;
   created_at: number;
 }
@@ -75,7 +76,7 @@ export function channelMembers(db: Db, channelId: string): string[] {
 
 export function createChannel(
   db: Db,
-  input: { type: "dm" | "group"; name?: string; ownerId: string; memberIds: string[] },
+  input: { type: "dm" | "group"; name?: string; topic?: string; ownerId: string; memberIds: string[] },
 ): ChannelRow {
   if (input.type === "dm") {
     const other = input.memberIds.find((id) => id !== input.ownerId);
@@ -94,21 +95,69 @@ export function createChannel(
     id: randomId(),
     type: input.type,
     name: input.name ?? "",
+    topic: input.topic ?? "",
     owner_id: input.ownerId,
     created_at: Date.now(),
   };
-  db.prepare("INSERT INTO channels (id, type, name, owner_id, created_at) VALUES (?, ?, ?, ?, ?)").run(
-    row.id,
-    row.type,
-    row.name,
-    row.owner_id,
-    row.created_at,
-  );
+  db.prepare(
+    "INSERT INTO channels (id, type, name, topic, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(row.id, row.type, row.name, row.topic, row.owner_id, row.created_at);
   const memberSet = new Set([input.ownerId, ...input.memberIds]);
   for (const uid of memberSet) {
     db.prepare("INSERT OR IGNORE INTO channel_members (channel_id, user_id) VALUES (?, ?)").run(row.id, uid);
   }
   return row;
+}
+
+export function updateChannel(
+  db: Db,
+  id: string,
+  patch: { name?: string; topic?: string },
+): boolean {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (patch.name !== undefined && patch.name.trim()) { sets.push("name = ?"); vals.push(patch.name.trim()); }
+  if (patch.topic !== undefined) { sets.push("topic = ?"); vals.push(patch.topic); }
+  if (!sets.length) return false;
+  vals.push(id);
+  return db.prepare(`UPDATE channels SET ${sets.join(", ")} WHERE id = ?`).run(...(vals as string[])).changes > 0;
+}
+
+export function addChannelMembers(db: Db, channelId: string, userIds: string[]): void {
+  for (const uid of userIds) {
+    db.prepare("INSERT OR IGNORE INTO channel_members (channel_id, user_id) VALUES (?, ?)").run(channelId, uid);
+  }
+}
+
+export function removeChannelMember(db: Db, channelId: string, userId: string): boolean {
+  return db
+    .prepare("DELETE FROM channel_members WHERE channel_id = ? AND user_id = ?")
+    .run(channelId, userId).changes > 0;
+}
+
+export function listChannelFiles(db: Db, channelId: string) {
+  const rows = db
+    .prepare(
+      `SELECT m.*, u.name AS sender_name FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_user_id
+       WHERE m.channel_id = ? AND m.type IN ('file', 'image') AND m.payload_json IS NOT NULL
+       ORDER BY m.created_at DESC LIMIT 200`,
+    )
+    .all(channelId) as unknown as Array<MessageRow & { sender_name: string | null }>;
+  return rows.map((r) => {
+    const payload = JSON.parse(r.payload_json!) as { fileId?: string; name?: string; size?: number; mime?: string };
+    return {
+      id: r.id,
+      messageId: r.id,
+      fileId: payload.fileId,
+      name: payload.name ?? r.content,
+      size: payload.size ?? 0,
+      mime: payload.mime ?? "",
+      type: r.type,
+      senderName: r.sender_name ?? "AI",
+      createdAt: r.created_at,
+    };
+  }).filter((f) => f.fileId);
 }
 
 export function insertMessage(
@@ -196,6 +245,7 @@ export function listMyChannels(db: Db, userId: string) {
       id: c.id,
       type: c.type,
       name: displayName,
+      topic: c.topic ?? "",
       ownerId: c.owner_id,
       createdAt: c.created_at,
       unread: unread.n,
