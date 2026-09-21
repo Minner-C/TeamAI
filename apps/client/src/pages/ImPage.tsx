@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Avatar,
   Badge,
@@ -18,9 +18,37 @@ import {
   Typography,
   message,
 } from "antd";
-import { RobotOutlined, PlusOutlined, TeamOutlined, PaperClipOutlined, FileOutlined } from "@ant-design/icons";
-import { api, type AiRoleView, type ChannelView, type ImMessage, type SessionUser } from "../api";
+import {
+  FileOutlined,
+  PaperClipOutlined,
+  PictureOutlined,
+  PlusOutlined,
+  RobotOutlined,
+  SearchOutlined,
+  SendOutlined,
+  SmileOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
+import {
+  api,
+  type AiRoleView,
+  type ChannelMember,
+  type ChannelView,
+  type ImMessage,
+  type SessionUser,
+} from "../api";
 import { useAppStore } from "../store/appStore";
+
+const AVATAR_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
+
+const EMOJIS =
+  "😀 😄 😁 😂 🤣 😊 😍 🤔 😅 😭 😤 🥳 😴 🤝 👍 👎 👏 🙏 💪 🎉 🔥 ❤️ 💡 ✅ ❌ ⭐ 🚀 ☕ 🍚 🐛 💻 📌 ⏰ 👀 🤖 👌 😎 🥺 😱 🤯 💯 🔔 📎 🗂️ 📈 🛠️".split(" ");
+
+function avatarColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
 
 function formatSize(size?: number): string {
   if (size == null) return "";
@@ -29,35 +57,91 @@ function formatSize(size?: number): string {
   return `${(size / 1024 / 1024).toFixed(1)}MB`;
 }
 
-function MessageBody({ m }: { m: ImMessage }) {
+function pad(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+function fmtListTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (ts >= today) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (ts >= today - 86400000) return "昨天";
+  const week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  if (ts >= today - 6 * 86400000) return week[d.getDay()];
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function fmtDivider(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (ts >= today) return hm;
+  if (ts >= today - 86400000) return `昨天 ${hm}`;
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+}
+
+function previewOf(ch: ChannelView): string {
+  const m = ch.lastMessage;
+  if (!m) return "暂无消息";
+  const body =
+    m.type === "image" ? "[图片]" : m.type === "file" ? `[文件] ${m.payload?.name ?? m.content}` : m.content;
+  return ch.type === "group" && m.senderName ? `${m.senderName}：${body}` : body;
+}
+
+function MessageAvatar({ name, isAi }: { name: string; isAi?: boolean }) {
+  if (isAi) {
+    return (
+      <div className="im-avatar" style={{ background: "#3b2f63", color: "#c4b5fd" }}>
+        <RobotOutlined />
+      </div>
+    );
+  }
+  return (
+    <div className="im-avatar" style={{ background: avatarColor(name || "?") }}>
+      {(name || "?").slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
+
+function MessageBody({ m, mine }: { m: ImMessage; mine: boolean }) {
   if (m.type === "image" && m.payload?.fileId) {
     return (
-      <div className="im-msg-content">
-        <img
-          src={api.fileUrl(m.payload.fileId)}
-          alt={m.payload.name ?? "图片"}
-          style={{ maxWidth: 320, maxHeight: 240, borderRadius: 6, display: "block" }}
-        />
-        <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{m.content}</div>
+      <div className="im-bubble-img">
+        <img src={api.fileUrl(m.payload.fileId)} alt={m.payload.name ?? "图片"} />
+        {m.content && m.content !== m.payload.name && <div className="im-bubble-img-cap">{m.content}</div>}
       </div>
     );
   }
   if (m.type === "file" && m.payload?.fileId) {
     return (
-      <div className="im-msg-content">
-        <Typography.Link href={api.fileUrl(m.payload.fileId)} target="_blank">
-          <FileOutlined /> {m.payload.name ?? m.content}（{formatSize(m.payload.size)}）
-        </Typography.Link>
-      </div>
+      <a
+        className={`im-file-card ${mine ? "im-file-card-mine" : ""}`}
+        href={api.fileUrl(m.payload.fileId)}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <div className="im-file-icon">
+          <FileOutlined />
+        </div>
+        <div className="im-file-meta">
+          <div className="im-file-name">{m.payload.name ?? m.content}</div>
+          <div className="im-file-size">{formatSize(m.payload.size)}</div>
+        </div>
+      </a>
     );
   }
-  return <div className="im-msg-content">{m.content}</div>;
+  return <div className={`im-bubble ${mine ? "im-bubble-mine" : ""}`}>{m.content}</div>;
 }
 
 export default function ImPage() {
   const { user, feedToAgent } = useAppStore();
   const [channels, setChannels] = useState<ChannelView[]>([]);
+  const [keyword, setKeyword] = useState("");
   const [active, setActive] = useState<ChannelView | null>(null);
+  const [members, setMembers] = useState<ChannelMember[]>([]);
   const [messages, setMessages] = useState<ImMessage[]>([]);
   const [input, setInput] = useState("");
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({});
@@ -71,8 +155,9 @@ export default function ImPage() {
   const [roles, setRoles] = useState<AiRoleView[]>([]);
   const [form] = Form.useForm();
   const [roleForm] = Form.useForm();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<string | null>(null);
+  const stickBottom = useRef(true);
 
   const refreshChannels = useCallback(() => {
     api.listChannels().then(setChannels).catch((e) => message.error(e.message));
@@ -94,6 +179,7 @@ export default function ImPage() {
           setMessages((prev) =>
             prev.some((m) => m.id === ev.message.id) ? prev : [...prev, ev.message],
           );
+          void api.markRead(ev.message.channelId);
         }
         refreshChannels();
       }
@@ -113,16 +199,28 @@ export default function ImPage() {
   }, [refreshChannels, user?.id]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = listRef.current;
+    if (el && stickBottom.current) el.scrollTop = el.scrollHeight;
+  }, [messages, active?.id]);
+
+  function onListScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function openChannel(ch: ChannelView) {
     setActive(ch);
     activeRef.current = ch.id;
     setTypingUsers({});
+    stickBottom.current = true;
     try {
-      const msgs = await api.listMessages(ch.id);
+      const [msgs, mem] = await Promise.all([
+        api.listMessages(ch.id),
+        api.channelMembers(ch.id).catch(() => [] as ChannelMember[]),
+      ]);
       setMessages(msgs);
+      setMembers(mem);
       setHasMore(msgs.length >= 50);
       await api.markRead(ch.id);
       refreshChannels();
@@ -133,11 +231,16 @@ export default function ImPage() {
 
   async function loadEarlier() {
     if (!active || !messages.length || loadingMore) return;
+    const el = listRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
     setLoadingMore(true);
     try {
       const older = await api.listMessages(active.id, messages[0].createdAt);
       setMessages((prev) => [...older.filter((o) => !prev.some((m) => m.id === o.id)), ...prev]);
       setHasMore(older.length >= 50);
+      requestAnimationFrame(() => {
+        if (el) el.scrollTop = el.scrollHeight - prevHeight;
+      });
     } catch (e) {
       message.error(e instanceof Error ? e.message : "加载失败");
     } finally {
@@ -157,6 +260,7 @@ export default function ImPage() {
     const text = input.trim();
     if (!text || !active) return;
     setInput("");
+    stickBottom.current = true;
     try {
       const sent = await api.sendMessage(active.id, text);
       setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
@@ -167,14 +271,19 @@ export default function ImPage() {
     }
   }
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>, onlyImage = false) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !active) return;
+    if (onlyImage && !file.type.startsWith("image/")) {
+      message.warning("请选择图片文件");
+      return;
+    }
     const hide = message.loading(`正在上传 ${file.name}…`, 0);
     try {
       const info = await api.uploadFile(file);
       const type = info.mime.startsWith("image/") ? "image" : "file";
+      stickBottom.current = true;
       const sent = await api.sendMessage(active.id, info.name, type, {
         fileId: info.id,
         name: info.name,
@@ -241,99 +350,222 @@ export default function ImPage() {
     if (active) setRoles(await api.listRoles(active.id));
   }
 
+  const filteredChannels = useMemo(() => {
+    const k = keyword.trim().toLowerCase();
+    if (!k) return channels;
+    return channels.filter((c) => c.name.toLowerCase().includes(k));
+  }, [channels, keyword]);
+
+  const rows = useMemo(() => {
+    const out: Array<
+      | { kind: "divider"; key: string; ts: number }
+      | { kind: "msg"; key: string; m: ImMessage; grouped: boolean }
+    > = [];
+    let prev: ImMessage | null = null;
+    for (const m of messages) {
+      if (!prev || m.createdAt - prev.createdAt > 5 * 60 * 1000) {
+        out.push({ kind: "divider", key: `d-${m.id}`, ts: m.createdAt });
+      }
+      const grouped =
+        !!prev &&
+        m.createdAt - prev.createdAt <= 5 * 60 * 1000 &&
+        m.senderUserId === prev.senderUserId &&
+        m.senderRoleId === prev.senderRoleId;
+      out.push({ kind: "msg", key: m.id, m, grouped });
+      prev = m;
+    }
+    return out;
+  }, [messages]);
+
+  const typingNames = Object.keys(typingUsers)
+    .map((uid) => users.find((u) => u.id === uid)?.name ?? "对方")
+    .join("、");
+
   return (
     <div className="im-page">
       <div className="im-sidebar">
-        <div className="im-sidebar-header">
-          <Typography.Text strong>会话</Typography.Text>
-          <Button size="small" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} />
+        <div className="im-sidebar-top">
+          <Input
+            className="im-search"
+            prefix={<SearchOutlined style={{ color: "#6b6b72" }} />}
+            placeholder="搜索会话"
+            allowClear
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+          <Tooltip title="发起会话">
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} />
+          </Tooltip>
         </div>
-        <List
-          size="small"
-          dataSource={channels}
-          locale={{ emptyText: <Empty description="暂无会话，点右上角新建" /> }}
-          renderItem={(ch) => (
-            <List.Item
-              className={`im-channel ${active?.id === ch.id ? "im-channel-active" : ""}`}
-              onClick={() => openChannel(ch)}
-            >
-              <Space>
-                <Avatar size="small" icon={ch.type === "group" ? <TeamOutlined /> : undefined}>
-                  {ch.type === "dm" ? ch.name[0] : null}
-                </Avatar>
-                <span className="im-channel-name">{ch.name}</span>
-              </Space>
-              <Badge count={ch.unread} size="small" />
-            </List.Item>
+        <div className="im-conv-list">
+          {filteredChannels.length === 0 && (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={keyword ? "没有匹配的会话" : "暂无会话，点右上角 + 发起"}
+              style={{ marginTop: 60 }}
+            />
           )}
-        />
+          {filteredChannels.map((ch) => (
+            <div
+              key={ch.id}
+              className={`im-conv ${active?.id === ch.id ? "im-conv-active" : ""}`}
+              onClick={() => void openChannel(ch)}
+            >
+              {ch.type === "group" ? (
+                <div className="im-avatar im-avatar-lg" style={{ background: avatarColor(ch.name) }}>
+                  <TeamOutlined />
+                </div>
+              ) : (
+                <div className="im-avatar im-avatar-lg" style={{ background: avatarColor(ch.name) }}>
+                  {ch.name.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <div className="im-conv-body">
+                <div className="im-conv-row">
+                  <span className="im-conv-name">{ch.name}</span>
+                  {ch.lastMessage && <span className="im-conv-time">{fmtListTime(ch.lastMessage.createdAt)}</span>}
+                </div>
+                <div className="im-conv-row">
+                  <span className="im-conv-preview">{previewOf(ch)}</span>
+                  {ch.unread > 0 && <Badge count={ch.unread} size="small" />}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="im-main">
         {!active ? (
-          <Empty description="选择一个会话开始聊天" style={{ marginTop: 120 }} />
+          <div className="im-placeholder">
+            <Empty description="选择一个会话，或点击左上角 + 发起新会话" />
+          </div>
         ) : (
           <>
             <div className="im-header">
-              <Typography.Text strong>{active.name}</Typography.Text>
-              {active.type === "group" && (
-                <Button size="small" icon={<RobotOutlined />} onClick={openRoles}>
-                  AI 角色
-                </Button>
-              )}
+              <div className="im-header-info">
+                <span className="im-header-name">{active.name}</span>
+                {active.type === "group" && <span className="im-header-count">{members.length} 名成员</span>}
+              </div>
+              <Space size={4}>
+                {active.type === "group" && (
+                  <Avatar.Group maxCount={5} size={28}>
+                    {members.map((mb) => (
+                      <Tooltip key={mb.id} title={mb.name}>
+                        <Avatar style={{ background: avatarColor(mb.name), fontSize: 12 }}>
+                          {mb.name.slice(0, 1).toUpperCase()}
+                        </Avatar>
+                      </Tooltip>
+                    ))}
+                  </Avatar.Group>
+                )}
+                {active.type === "group" && (
+                  <Button size="small" icon={<RobotOutlined />} onClick={() => void openRoles()}>
+                    AI 角色
+                  </Button>
+                )}
+              </Space>
             </div>
 
-            <div className="im-messages">
+            <div className="im-messages" ref={listRef} onScroll={onListScroll}>
               {hasMore && (
-                <div style={{ textAlign: "center", paddingBottom: 8 }}>
+                <div className="im-load-more">
                   <Button size="small" type="link" loading={loadingMore} onClick={() => void loadEarlier()}>
                     加载更早消息
                   </Button>
                 </div>
               )}
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`im-msg ${m.senderUserId === user?.id ? "im-msg-mine" : ""}`}
-                >
-                  <div className="im-msg-meta">
-                    {m.senderName}
-                    {m.senderRoleId && <Tag color="purple" style={{ marginLeft: 6 }}>AI</Tag>}
-                    <span className="im-msg-time">
-                      {new Date(m.createdAt).toLocaleTimeString("zh-CN")}
-                    </span>
-                    <Tooltip title="喂给 AI">
-                      <Button
-                        type="text"
-                        size="small"
-                        className="im-feed-btn"
-                        onClick={() => feedToAgent(m.content)}
-                      >
-                        喂给 AI
-                      </Button>
-                    </Tooltip>
+              {messages.length === 0 && (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="还没有消息，说点什么吧"
+                  style={{ marginTop: 80 }}
+                />
+              )}
+              {rows.map((row) => {
+                if (row.kind === "divider") {
+                  return (
+                    <div key={row.key} className="im-divider">
+                      <span>{fmtDivider(row.ts)}</span>
+                    </div>
+                  );
+                }
+                const m = row.m;
+                const mine = m.senderUserId === user?.id;
+                return (
+                  <div
+                    key={row.key}
+                    className={`im-msg ${mine ? "im-msg-mine" : ""} ${row.grouped ? "im-msg-grouped" : ""}`}
+                  >
+                    {row.grouped ? (
+                      <div className="im-avatar-spacer" />
+                    ) : (
+                      <MessageAvatar name={m.senderName} isAi={!!m.senderRoleId} />
+                    )}
+                    <div className="im-msg-main">
+                      {!row.grouped && !mine && (
+                        <div className="im-msg-sender">
+                          {m.senderName}
+                          {m.senderRoleId && <span className="im-ai-tag">AI</span>}
+                        </div>
+                      )}
+                      <div className="im-msg-bubble-row">
+                        <MessageBody m={m} mine={mine} />
+                        <Tooltip title="喂给 AI 助手">
+                          <Button
+                            type="text"
+                            size="small"
+                            className="im-feed-btn"
+                            icon={<RobotOutlined />}
+                            onClick={() => feedToAgent(m.content)}
+                          />
+                        </Tooltip>
+                      </div>
+                    </div>
                   </div>
-                  <MessageBody m={m} />
-                </div>
-              ))}
-              <div ref={bottomRef} />
+                );
+              })}
             </div>
 
-            {Object.keys(typingUsers).length > 0 && (
-              <div style={{ fontSize: 12, color: "#8c8c8c", padding: "2px 4px 6px" }}>
-                {Object.keys(typingUsers)
-                  .map((uid) => users.find((u) => u.id === uid)?.name ?? "对方")
-                  .join("、")}{" "}
-                正在输入…
-              </div>
-            )}
+            {typingNames && <div className="im-typing">{typingNames} 正在输入…</div>}
 
-            <Space.Compact style={{ width: "100%" }}>
-              <label className="ant-btn" style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                <PaperClipOutlined />
-                <input type="file" hidden onChange={(e) => void onPickFile(e)} />
-              </label>
+            <div className="im-input">
+              <div className="im-input-toolbar">
+                <Popover
+                  trigger="click"
+                  placement="topLeft"
+                  content={
+                    <div className="im-emoji-panel">
+                      {EMOJIS.map((e) => (
+                        <button key={e} className="im-emoji" onClick={() => onInputChange(input + e)}>
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  }
+                >
+                  <Button type="text" size="small" icon={<SmileOutlined />} />
+                </Popover>
+                <Tooltip title="发送图片">
+                  <label className="im-tool">
+                    <PictureOutlined />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => void onPickFile(e, true)}
+                    />
+                  </label>
+                </Tooltip>
+                <Tooltip title="发送文件">
+                  <label className="im-tool">
+                    <PaperClipOutlined />
+                    <input type="file" hidden onChange={(e) => void onPickFile(e)} />
+                  </label>
+                </Tooltip>
+              </div>
               <Input.TextArea
+                className="im-textarea"
                 value={input}
                 onChange={(e) => onInputChange(e.target.value)}
                 onPressEnter={(e) => {
@@ -342,19 +574,25 @@ export default function ImPage() {
                     void send();
                   }
                 }}
-                placeholder="Enter 发送；群聊中 @AI角色名 可触发 AI 回复"
-                autoSize={{ minRows: 1, maxRows: 4 }}
+                placeholder={
+                  active.type === "group" ? "Enter 发送，Shift+Enter 换行；@AI角色名 可触发 AI 回复" : "Enter 发送，Shift+Enter 换行"
+                }
+                autoSize={{ minRows: 2, maxRows: 6 }}
+                variant="borderless"
               />
-              <Button type="primary" onClick={send}>
-                发送
-              </Button>
-            </Space.Compact>
+              <div className="im-input-footer">
+                <span className="im-input-hint">Enter 发送 · Shift+Enter 换行</span>
+                <Button type="primary" icon={<SendOutlined />} disabled={!input.trim()} onClick={() => void send()}>
+                  发送
+                </Button>
+              </div>
+            </div>
           </>
         )}
       </div>
 
       <Modal
-        title="新建会话"
+        title="发起会话"
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => form.submit()}
@@ -404,10 +642,14 @@ export default function ImPage() {
           renderItem={(r) => (
             <List.Item
               actions={[
-                <Button key="toggle" size="small" type="text" onClick={() => onToggleRole(r)}>
+                <Button key="toggle" size="small" type="text" onClick={() => void onToggleRole(r)}>
                   {r.enabled ? "停用" : "启用"}
                 </Button>,
-                <Popconfirm key="del" title="移除该角色？" onConfirm={() => api.deleteRole(r.id).then(openRoles)}>
+                <Popconfirm
+                  key="del"
+                  title="移除该角色？"
+                  onConfirm={() => api.deleteRole(r.id).then(() => void openRoles())}
+                >
                   <Button size="small" danger type="text">
                     移除
                   </Button>
@@ -438,17 +680,14 @@ export default function ImPage() {
           form={roleForm}
           layout="vertical"
           onFinish={onCreateRole}
-          style={{ marginTop: 16, borderTop: "1px solid #f0f0f0", paddingTop: 16 }}
+          style={{ marginTop: 16, borderTop: "1px solid #303035", paddingTop: 16 }}
         >
           <Space.Compact block>
             <Form.Item name="name" rules={[{ required: true, message: "角色名" }]} style={{ flex: 1 }}>
               <Input placeholder="角色名，如：小助手" />
             </Form.Item>
             <Form.Item name="model" rules={[{ required: true, message: "模型" }]} style={{ flex: 1 }}>
-              <Select
-                placeholder="模型"
-                options={models.map((m) => ({ value: m.model, label: m.model }))}
-              />
+              <Select placeholder="模型" options={models.map((m) => ({ value: m.model, label: m.model }))} />
             </Form.Item>
           </Space.Compact>
           <Form.Item name="trigger" initialValue="mention">
@@ -470,7 +709,10 @@ export default function ImPage() {
             }
           </Form.Item>
           <Form.Item name="personaPrompt">
-            <Input.TextArea placeholder="人设 prompt，如：你是资深前端工程师，回答简洁专业" autoSize={{ minRows: 2 }} />
+            <Input.TextArea
+              placeholder="人设 prompt，如：你是资深前端工程师，回答简洁专业"
+              autoSize={{ minRows: 2 }}
+            />
           </Form.Item>
           <Button type="primary" htmlType="submit">
             添加角色

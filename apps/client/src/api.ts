@@ -29,6 +29,12 @@ export interface ImMessage {
   createdAt: number;
 }
 
+export interface ChannelMember {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface ChannelView {
   id: string;
   type: "dm" | "group";
@@ -367,6 +373,12 @@ export const api = {
 
   async markRead(channelId: string): Promise<void> {
     await directFetch(`/api/channels/${channelId}/read`, { method: "POST" });
+  },
+
+  async channelMembers(channelId: string): Promise<ChannelMember[]> {
+    const res = await directFetch(`/api/channels/${channelId}/members`);
+    if (!res.ok) throw new Error(`获取成员失败：${res.status}`);
+    return ((await res.json()) as { members: ChannelMember[] }).members;
   },
 
   async listRoles(channelId: string): Promise<AiRoleView[]> {
