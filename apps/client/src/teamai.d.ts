@@ -43,6 +43,14 @@ export interface TeamAiApi {
   repoRemoteUrl(group: string, name: string, email: string): Promise<string>;
   pickDir(): Promise<string | null>;
   gitClone(repoUrl: string, targetDir: string): Promise<void>;
+  pushWorkspace(input: {
+    cwd: string;
+    group: string;
+    name: string;
+    message: string;
+    authorName: string;
+    authorEmail: string;
+  }): Promise<{ output: string; commitHash: string; pushed: boolean; repo: string }>;
   saveSession(input: {
     title?: string;
     cli?: string;

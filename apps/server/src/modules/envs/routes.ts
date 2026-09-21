@@ -1,8 +1,20 @@
 import type { FastifyInstance } from "fastify";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { requireUser } from "../core/auth.js";
 import { recordAudit } from "../audit/store.js";
 import { createEnv, deleteEnv, getEnv, listEnvs, toEnvView } from "./store.js";
 import { currentBackend, envLogs, execInEnv, isRunning, startEnv, stopEnv } from "./runner.js";
+
+const execFileAsync = promisify(execFile);
+
+async function gitIn(cwd: string, args: string[]): Promise<string> {
+  const { stdout, stderr } = await execFileAsync("git", ["-C", cwd, ...args], {
+    timeout: 60000,
+    maxBuffer: 1024 * 1024,
+  });
+  return `${stdout}${stderr}`.trim();
+}
 
 function canAccess(envUserId: string, reqUser: { id: string; role: string }): boolean {
   return envUserId === reqUser.id || reqUser.role === "admin";
@@ -77,6 +89,44 @@ export async function envRoutes(app: FastifyInstance) {
       ip: req.ip,
     });
     return { ok: true };
+  });
+
+  app.post("/:id/deploy", { preHandler: requireUser }, async (req, reply) => {
+    const env = getEnv(app.db, (req.params as { id: string }).id);
+    if (!env || !canAccess(env.user_id, req.user!)) return reply.code(404).send({ error: "not found" });
+    if (!env.repo_id) return reply.code(400).send({ error: "该环境未关联仓库，无法拉取代码" });
+    const logs: string[] = [];
+    try {
+      const branch = (await gitIn(env.workdir, ["rev-parse", "--abbrev-ref", "HEAD"])) || "main";
+      logs.push(await gitIn(env.workdir, ["fetch", "origin"]));
+      logs.push(await gitIn(env.workdir, ["reset", "--hard", `origin/${branch}`]));
+      const head = await gitIn(env.workdir, ["log", "-1", "--pretty=format:%h %s (%an)"]);
+      logs.push(`[teamai] 已同步到 ${head}`);
+      let started = false;
+      if (env.run_cmd.trim()) {
+        if (isRunning(env.id)) {
+          await stopEnv(app.db, env);
+          logs.push("[teamai] 已停止旧进程");
+        }
+        const { pid } = await startEnv(app.db, env);
+        started = true;
+        logs.push(`[teamai] 已启动: ${env.run_cmd}${pid ? ` (pid ${pid})` : ""}`);
+      }
+      recordAudit(app.db, {
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        action: "env.deploy",
+        target: env.name,
+        detail: head,
+        ip: req.ip,
+      });
+      return { ok: true, started, log: logs.filter(Boolean).join("\n") };
+    } catch (err) {
+      return reply.code(400).send({
+        error: err instanceof Error ? err.message : "deploy failed",
+        log: logs.filter(Boolean).join("\n"),
+      });
+    }
   });
 
   app.get("/:id/logs", { preHandler: requireUser }, async (req, reply) => {

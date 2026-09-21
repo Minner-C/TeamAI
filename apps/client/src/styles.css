@@ -1162,6 +1162,19 @@ body,
   background: #2e2e33;
 }
 
+.sync-result {
+  background: #161618;
+  border: 1px solid #2e2e33;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #9fd9a8;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* ---------- IM org / contacts / drawer ---------- */
 
 .im-side-tabs {

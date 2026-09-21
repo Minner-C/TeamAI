@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Input, Modal, Radio, Select, Tag, message } from "antd";
+import { Button, Form, Input, Modal, Radio, Select, Tag, message } from "antd";
 import {
   CheckOutlined,
   CloudOutlined,
+  CloudUploadOutlined,
   FolderOpenOutlined,
   PlusOutlined,
   SaveOutlined,
@@ -63,7 +64,11 @@ export default function AgentPage() {
   const requestIdRef = useRef(0);
   const taskIdRef = useRef("");
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { agentDraft, clearAgentDraft, offline } = useAppStore();
+  const { agentDraft, clearAgentDraft, offline, user, setPage } = useAppStore();
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ output: string; repo: string } | null>(null);
+  const [syncForm] = Form.useForm();
 
   useEffect(() => {
     if (agentDraft) {
@@ -282,6 +287,46 @@ export default function AgentPage() {
     }
   }
 
+  async function onSyncWorkspace(values: { group: string; name: string; message: string }) {
+    if (!workdir.trim()) {
+      message.warning("请先选择工作目录");
+      return;
+    }
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const r = await api.pushWorkspace({
+        cwd: workdir.trim(),
+        group: values.group.trim() || "default",
+        name: values.name.trim(),
+        message: values.message.trim() || "sync from TeamAI client",
+        authorName: user?.name ?? "teamai",
+        authorEmail: user?.email ?? "teamai@local",
+      });
+      setSyncResult({ output: r.output, repo: r.repo });
+      message.success(`已推送到服务端仓库 ${r.repo}`);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "推送失败");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function openSyncModal() {
+    if (!workdir.trim()) {
+      message.warning("请先选择工作目录");
+      return;
+    }
+    const dirName = workdir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "project";
+    syncForm.setFieldsValue({
+      group: "default",
+      name: dirName.replace(/[^\w.-]/g, "-").toLowerCase(),
+      message: `sync: ${new Date().toLocaleString("zh-CN")}`,
+    });
+    setSyncResult(null);
+    setSyncOpen(true);
+  }
+
   const cliReady = mode === "gateway" || (cli && workdir);
 
   return (
@@ -385,6 +430,16 @@ export default function AgentPage() {
                   />
                 }
               />
+              {!offline && (
+                <Button
+                  size="small"
+                  icon={<CloudUploadOutlined />}
+                  disabled={!workdir.trim() || sending}
+                  onClick={openSyncModal}
+                >
+                  同步到服务端
+                </Button>
+              )}
             </>
           )}
           <span style={{ flex: 1 }} />
@@ -508,6 +563,46 @@ export default function AgentPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        title="同步工作区到服务端"
+        open={syncOpen}
+        onCancel={() => setSyncOpen(false)}
+        onOk={() => syncForm.submit()}
+        okText={syncing ? "推送中…" : "推送"}
+        okButtonProps={{ loading: syncing }}
+        width={520}
+      >
+        <Form form={syncForm} layout="vertical" onFinish={onSyncWorkspace}>
+          <Form.Item label="工作目录">
+            <Input value={workdir} disabled />
+          </Form.Item>
+          <Form.Item name="group" label="仓库分组" rules={[{ required: true, message: "请输入分组" }]}>
+            <Input placeholder="default" />
+          </Form.Item>
+          <Form.Item
+            name="name"
+            label="仓库名（不存在则自动创建）"
+            rules={[
+              { required: true, message: "请输入仓库名" },
+              { pattern: /^[a-zA-Z0-9._-]{1,64}$/, message: "仅限字母、数字、点、横线、下划线" },
+            ]}
+          >
+            <Input placeholder="my-project" />
+          </Form.Item>
+          <Form.Item name="message" label="提交信息" rules={[{ required: true, message: "请输入提交信息" }]}>
+            <Input placeholder="本次改动的简要说明" />
+          </Form.Item>
+        </Form>
+        {syncResult && (
+          <>
+            <pre className="sync-result">{syncResult.output}</pre>
+            <Button type="link" onClick={() => { setSyncOpen(false); setPage("envs"); }}>
+              前往「在线环境」部署运行 →
+            </Button>
+          </>
+        )}
+      </Modal>
 
       <Modal
         title="CLI 请求工具权限"

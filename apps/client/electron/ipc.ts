@@ -1,7 +1,7 @@
 import { ipcMain, dialog } from "electron";
 import { detectClis } from "./headlessManager.js";
 import { listModelRoutes } from "./modelRegistry.js";
-import { cloneRepo } from "./gitWorkspace.js";
+import { cloneRepo, pushWorkspace } from "./gitWorkspace.js";
 import { ImClient } from "./imClient.js";
 import { respondAgentPermission, runAgentCli, stopAgentCli } from "./agentRunner.js";
 import {
@@ -47,6 +47,24 @@ export function registerIpcHandlers() {
   });
   ipcMain.handle("git:clone", (_e, repoUrl: string, targetDir: string) =>
     cloneRepo(repoUrl, targetDir),
+  );
+  ipcMain.handle(
+    "git:pushWorkspace",
+    async (
+      _e,
+      input: { cwd: string; group: string; name: string; message: string; authorName: string; authorEmail: string },
+    ) => {
+      const repos = await listRepos().catch(() => []);
+      if (!repos.some((r) => r.group === input.group && r.name === input.name)) {
+        await createRepo(input.name, input.group);
+      }
+      const remoteUrl = gitRemoteUrl(input.group, input.name, input.authorEmail);
+      const result = await pushWorkspace(input.cwd, remoteUrl, input.message, {
+        name: input.authorName,
+        email: input.authorEmail,
+      });
+      return { ...result, repo: `${input.group}/${input.name}` };
+    },
   );
   ipcMain.handle(
     "sessions:save",

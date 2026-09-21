@@ -140,6 +140,34 @@ try {
   const list = await (await fetch(`${BASE}/api/envs`, { headers: authH })).json();
   check("环境列表", list.envs.length === 2 && list.envs.every((e) => e.userName === "Admin"), JSON.stringify(list).slice(0, 200));
 
+  fs.writeFileSync(path.join(workDir, "app.txt"), "hello env v2\n");
+  execFileSync("git", ["-C", workDir, "add", "."], { stdio: "pipe" });
+  execFileSync("git", ["-C", workDir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "v2"], {
+    stdio: "pipe",
+  });
+  execFileSync("git", ["-C", workDir, "push", "origin", "HEAD:main"], { stdio: "pipe" });
+
+  const deploy = await (
+    await fetch(`${BASE}/api/envs/${env.id}/deploy`, { method: "POST", headers: authH })
+  ).json();
+  check("部署接口拉取并返回成功", deploy.ok === true && deploy.log.includes("v2"), JSON.stringify(deploy).slice(0, 200));
+
+  const cat2 = await (
+    await fetch(`${BASE}/api/envs/${env.id}/exec`, {
+      method: "POST",
+      headers: authH,
+      body: JSON.stringify({ cmd: "cat app.txt" }),
+    })
+  ).json();
+  check("部署后环境内代码已更新", cat2.output.includes("hello env v2"), JSON.stringify(cat2));
+
+  const envNoRepo = await (
+    await fetch(`${BASE}/api/envs`, { method: "POST", headers: authH, body: JSON.stringify({ name: "空环境" }) })
+  ).json();
+  const deployDenied = await fetch(`${BASE}/api/envs/${envNoRepo.id}/deploy`, { method: "POST", headers: authH });
+  check("未关联仓库的环境拒绝部署", deployDenied.status === 400);
+  await fetch(`${BASE}/api/envs/${envNoRepo.id}`, { method: "DELETE", headers: authH });
+
   check("runner 后端自动降级为 process（沙箱无 docker）", list.runner === "process", list.runner);
 
   const auditDenied = await fetch(`${BASE}/api/admin/audit`, { headers: mH });
@@ -147,7 +175,7 @@ try {
 
   const audit = await (await fetch(`${BASE}/api/admin/audit?limit=100`, { headers: authH })).json();
   const actions = new Set(audit.logs.map((l) => l.action));
-  const expect = ["auth.login", "user.create", "repo.create", "env.create", "env.start", "env.stop"];
+  const expect = ["auth.login", "user.create", "repo.create", "env.create", "env.start", "env.stop", "env.deploy"];
   check("审计日志覆盖关键操作", expect.every((a) => actions.has(a)), [...actions].join(","));
 
   const auditFilter = await (await fetch(`${BASE}/api/admin/audit?action=env`, { headers: authH })).json();

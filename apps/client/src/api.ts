@@ -345,6 +345,25 @@ export const api = {
     throw new Error("浏览器模式不支持 clone，请复制仓库地址在本地终端操作");
   },
 
+  async pushWorkspace(input: {
+    cwd: string;
+    group: string;
+    name: string;
+    message: string;
+    authorName: string;
+    authorEmail: string;
+  }): Promise<{ output: string; commitHash: string; pushed: boolean; repo: string }> {
+    if (isElectron) return window.teamai.pushWorkspace(input);
+    throw new Error("浏览器模式不支持本地推送，请使用桌面客户端");
+  },
+
+  async envDeploy(id: string): Promise<{ ok: boolean; started: boolean; log: string }> {
+    const res = await directFetch(`/api/envs/${id}/deploy`, { method: "POST" });
+    const data = (await res.json()) as { ok?: boolean; started?: boolean; log?: string; error?: string };
+    if (!res.ok) throw new Error(data.error ? `${data.error}\n${data.log ?? ""}`.trim() : `部署失败：${res.status}`);
+    return data as { ok: boolean; started: boolean; log: string };
+  },
+
   async saveSession(input: { title?: string; cli?: string; taskId?: string; messages: unknown[] }) {
     if (isElectron) return window.teamai.saveSession(input);
     const res = await directFetch("/api/sessions", { method: "POST", body: JSON.stringify(input) });

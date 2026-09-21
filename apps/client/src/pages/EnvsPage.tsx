@@ -19,6 +19,7 @@ import {
   FileTextOutlined,
   PauseOutlined,
   PlusOutlined,
+  RocketOutlined,
 } from "@ant-design/icons";
 import { api, type EnvView, type RepoView } from "../api";
 
@@ -80,6 +81,23 @@ export default function EnvsPage() {
     }
   }
 
+  async function onDeploy(env: EnvView) {
+    const hide = message.loading(`正在部署 ${env.name}：拉取最新代码…`, 0);
+    try {
+      const r = await api.envDeploy(env.id);
+      hide();
+      Modal.success({
+        title: "部署完成",
+        content: <pre className="sync-result">{r.log}</pre>,
+        width: 520,
+      });
+      refresh();
+    } catch (err) {
+      hide();
+      message.error(err instanceof Error ? err.message : "部署失败");
+    }
+  }
+
   async function onExec() {
     if (!execEnv || !execCmd.trim()) return;
     setExecRunning(true);
@@ -134,6 +152,11 @@ export default function EnvsPage() {
                 ) : (
                   <Button size="small" type="primary" ghost icon={<CaretRightOutlined />} onClick={() => onAction(env, "start")} disabled={!env.runCmd}>
                     启动
+                  </Button>
+                )}
+                {env.repoId && (
+                  <Button size="small" type="primary" icon={<RocketOutlined />} onClick={() => void onDeploy(env)}>
+                    部署
                   </Button>
                 )}
                 <Button size="small" icon={<FileTextOutlined />} onClick={() => setLogsEnv(env)}>

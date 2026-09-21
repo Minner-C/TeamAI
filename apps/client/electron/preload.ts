@@ -24,6 +24,14 @@ const api = {
   pickDir: () => ipcRenderer.invoke("dialog:pickDir"),
   gitClone: (repoUrl: string, targetDir: string) =>
     ipcRenderer.invoke("git:clone", repoUrl, targetDir),
+  pushWorkspace: (input: {
+    cwd: string;
+    group: string;
+    name: string;
+    message: string;
+    authorName: string;
+    authorEmail: string;
+  }) => ipcRenderer.invoke("git:pushWorkspace", input),
   saveSession: (input: { title?: string; cli?: string; taskId?: string; messages: unknown[] }) =>
     ipcRenderer.invoke("sessions:save", input),
   imConnect: () => ipcRenderer.invoke("im:connect"),
