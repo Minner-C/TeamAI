@@ -9,9 +9,21 @@ export function providerStyle(row: ProviderRow): ApiStyle {
 export function upstreamUrl(row: ProviderRow, style: ApiStyle): string {
   const base = row.base_url.replace(/\/+$/, "");
   if (style === "anthropic") {
+    if (base.endsWith("/v1/messages")) return base;
     return `${base.replace(/\/v1$/, "")}/v1/messages`;
   }
+  if (base.endsWith("/chat/completions")) return base;
   return `${base.endsWith("/v1") ? base : `${base}/v1`}/chat/completions`;
+}
+
+export function modelsUrl(row: ProviderRow): string {
+  const base = row.base_url.replace(/\/+$/, "");
+  const isAnthropic = row.type === "anthropic";
+  const stripped = base
+    .replace(/\/chat\/completions$/, "")
+    .replace(/\/messages$/, "");
+  if (isAnthropic) return `${stripped.replace(/\/v1$/, "")}/v1/models`;
+  return `${stripped.endsWith("/v1") ? stripped : `${stripped}/v1`}/models`;
 }
 
 export function upstreamHeaders(row: ProviderRow, apiKey: string): Record<string, string> {

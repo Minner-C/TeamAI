@@ -12,6 +12,7 @@ import {
   providerStyle,
   upstreamHeaders,
   upstreamUrl,
+  modelsUrl,
   type ApiStyle,
 } from "./providers.js";
 
@@ -196,7 +197,20 @@ async function handle(
 
   if (!upstream.ok) {
     const text = await upstream.text();
-    return reply.code(upstream.status).send({ error: "upstream error", detail: text });
+    const url = upstreamUrl(provider, style);
+    req.log.warn({ provider: provider.name, url, status: upstream.status }, "upstream rejected request");
+    const hint =
+      upstream.status === 404
+        ? `请求地址 ${url} 不存在，请检查管理后台中 provider「${provider.name}」的 baseUrl：OpenAI 兼容接口一般填到域名或 /v1 即可（如 https://api.openai.com 或 https://api.deepseek.com/v1），不要包含 /chat/completions 之后的部分；同时确认模型名「${model}」在该平台可用`
+        : upstream.status === 401 || upstream.status === 403
+          ? `provider「${provider.name}」的 API Key 无效或没有权限，请到管理后台检查`
+          : "";
+    return reply.code(upstream.status).send({
+      error: "upstream error",
+      detail: text || hint,
+      provider: provider.name,
+      url,
+    });
   }
 
   if (wantStream) {
@@ -286,15 +300,11 @@ export async function gatewayRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
     if (!row) return reply.code(404).send({ error: "provider not found" });
-    const base = row.base_url.replace(/\/+$/, "");
-    const isAnthropic = row.type === "anthropic";
-    const modelsUrl = isAnthropic
-      ? `${base.replace(/\/v1$/, "")}/v1/models`
-      : `${base.endsWith("/v1") ? base : `${base}/v1`}/models`;
+    const url = modelsUrl(row);
     const apiKey = providerApiKey(row, app.config.jwtSecret);
     const started = Date.now();
     try {
-      const res = await fetch(modelsUrl, {
+      const res = await fetch(url, {
         headers: upstreamHeaders(row, apiKey),
         signal: AbortSignal.timeout(8000),
       });
