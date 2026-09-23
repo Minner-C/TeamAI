@@ -7,3 +7,4 @@ release/
 data/
 .env
 .env.local
+.pnpm-store/

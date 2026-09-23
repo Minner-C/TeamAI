@@ -1,18 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Form, Input, Modal, Radio, Select, Tag, message } from "antd";
+import { Button, Form, Input, Modal, Select, Tag, message } from "antd";
 import {
+  ArrowUpOutlined,
+  BugOutlined,
   CheckOutlined,
   CloudOutlined,
   CloudUploadOutlined,
+  CodeOutlined,
+  CopyOutlined,
   FolderOpenOutlined,
   PlusOutlined,
+  RocketOutlined,
   SaveOutlined,
   SearchOutlined,
-  SendOutlined,
   StopOutlined,
 } from "@ant-design/icons";
 import { api, type AgentChunk, type SessionView } from "../api";
+import type { TextAreaRef } from "antd/es/input/TextArea";
 import { useAppStore } from "../store/appStore";
+import Markdown from "../components/Markdown";
 
 interface ChatItem {
   role: "user" | "assistant";
@@ -41,6 +47,30 @@ function sessionGroup(ts: number): string {
 
 const GROUP_ORDER = ["今天", "昨天", "本周", "更早"];
 
+const QUICK_PROMPTS = [
+  { icon: <CodeOutlined />, title: "解释代码", desc: "选中的代码或文件", prompt: "请解释当前项目里核心模块的代码逻辑，并给出调用关系说明" },
+  { icon: <BugOutlined />, title: "排查问题", desc: "定位并修复报错", prompt: "帮我排查这个报错的原因，并给出修复方案：" },
+  { icon: <RocketOutlined />, title: "实现功能", desc: "从需求到代码", prompt: "帮我实现一个功能：" },
+  { icon: <CheckOutlined />, title: "代码审查", desc: "发现潜在问题", prompt: "请审查最近的代码改动，指出潜在的 bug、性能问题和可读性改进点" },
+];
+
+function MsgCopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="chat-copy-btn"
+      title="复制内容"
+      onClick={() => {
+        void navigator.clipboard?.writeText(text).catch(() => undefined);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? <CheckOutlined /> : <CopyOutlined />}
+    </button>
+  );
+}
+
 export default function AgentPage() {
   const [models, setModels] = useState<Array<{ model: string; providerType: string }>>([]);
   const [model, setModel] = useState<string>();
@@ -64,6 +94,7 @@ export default function AgentPage() {
   const requestIdRef = useRef(0);
   const taskIdRef = useRef("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<TextAreaRef>(null);
   const { agentDraft, clearAgentDraft, offline, user, setPage } = useAppStore();
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -189,10 +220,11 @@ export default function AgentPage() {
     setActiveSessionId(undefined);
     setOpenThoughts({});
     taskIdRef.current = "";
+    setTimeout(() => inputRef.current?.focus(), 50);
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || sending) return;
     if (mode === "cli") {
       if (!cli || !workdir) {
@@ -327,7 +359,13 @@ export default function AgentPage() {
     setSyncOpen(true);
   }
 
+  function applyQuickPrompt(prompt: string) {
+    setInput(prompt);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
   const cliReady = mode === "gateway" || (cli && workdir);
+  const workdirName = workdir ? (workdir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? workdir) : "";
 
   return (
     <div className="agent-layout">
@@ -376,82 +414,22 @@ export default function AgentPage() {
 
       <div className="agent-main">
         <div className="agent-topbar">
-          <span className="agent-topbar-title">Agent 工作台</span>
-          {api.isElectron && (
-            <Radio.Group
-              value={mode}
-              onChange={(e) => setMode(e.target.value as "gateway" | "cli")}
-              optionType="button"
-              buttonStyle="solid"
-              size="small"
-              options={[
-                { value: "gateway", label: "网关模型", disabled: offline },
-                { value: "cli", label: "本地 CLI" },
-              ]}
-            />
-          )}
-          {mode === "gateway" ? (
-            <Select
-              size="small"
-              style={{ minWidth: 220 }}
-              placeholder="选择模型（来自服务端网关）"
-              value={model}
-              onChange={setModel}
-              options={models.map((m) => ({
-                value: m.model,
-                label: `${m.model}（${m.providerType}）`,
-              }))}
-              notFoundContent="服务端尚未配置 provider"
-            />
-          ) : (
-            <>
-              <Select
-                size="small"
-                style={{ minWidth: 150 }}
-                placeholder="选择 CLI"
-                value={cli}
-                onChange={setCli}
-                options={clis.map((c) => ({
-                  value: c.kind,
-                  label: `${c.kind}（${c.channel}）`,
-                }))}
-                notFoundContent="未检测到已安装的 CLI"
-              />
-              <Input
-                size="small"
-                style={{ width: 240 }}
-                placeholder="工作目录"
-                value={workdir}
-                onChange={(e) => setWorkdir(e.target.value)}
-                suffix={
-                  <FolderOpenOutlined
-                    style={{ cursor: "pointer" }}
-                    onClick={() => void api.pickDir().then((d) => d && setWorkdir(d))}
-                  />
-                }
-              />
-              {!offline && (
-                <Button
-                  size="small"
-                  icon={<CloudUploadOutlined />}
-                  disabled={!workdir.trim() || sending}
-                  onClick={openSyncModal}
-                >
-                  同步到服务端
-                </Button>
-              )}
-            </>
-          )}
-          <span style={{ flex: 1 }} />
+          <span className="agent-topbar-title">AI 工作台</span>
           {sending && (
-            <span style={{ fontSize: 12, color: "#9a9aa0" }}>
+            <span className="agent-topbar-status">
               <span className="agent-status-dot agent-status-dot-busy" />
-              生成中…
+              正在生成…
             </span>
           )}
-          {mode === "cli" && sending && (
-            <Button size="small" danger icon={<StopOutlined />} onClick={() => void stopCli()}>
-              停止
+          <span style={{ flex: 1 }} />
+          {mode === "cli" && !offline && (
+            <Button
+              size="small"
+              icon={<CloudUploadOutlined />}
+              disabled={!workdir.trim() || sending}
+              onClick={openSyncModal}
+            >
+              同步到服务端
             </Button>
           )}
           {!offline && (
@@ -468,51 +446,70 @@ export default function AgentPage() {
 
         <div className="chat-flow">
           {items.length === 0 ? (
-            <div className="chat-empty">
-              <div className="chat-empty-logo">T</div>
-              <div>
+            <div className="agent-welcome">
+              <div className="agent-welcome-logo">T</div>
+              <div className="agent-welcome-title">你好，{user?.name ?? "开发者"}</div>
+              <div className="agent-welcome-sub">
                 {mode === "gateway"
-                  ? "选择模型后开始对话，请求经服务端网关转发并计入用量"
-                  : "本地 CLI 模式：选择已安装的 CLI 与工作目录\n任务在本机执行（Kimi 走 ACP 长连接，Claude 走 stream-json）"}
+                  ? "选择下方模型开始对话，请求经服务端网关转发并计入团队用量"
+                  : "本地 CLI 模式：任务在你本机的工作目录中执行，改动可一键同步到服务端"}
+              </div>
+              <div className="agent-quick-grid">
+                {QUICK_PROMPTS.map((q) => (
+                  <div key={q.title} className="agent-quick-card" onClick={() => applyQuickPrompt(q.prompt)}>
+                    <div className="agent-quick-icon">{q.icon}</div>
+                    <div>
+                      <div className="agent-quick-title">{q.title}</div>
+                      <div className="agent-quick-desc">{q.desc}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : (
             items.map((it, i) => (
               <div key={i} className={`chat-row${it.role === "user" ? " chat-row-user" : ""}`}>
-                <div className={`chat-avatar${it.role === "assistant" ? " chat-avatar-ai" : ""}`}>
-                  {it.role === "user" ? "我" : "AI"}
-                </div>
-                <div className="chat-body">
-                  {it.thought && (
-                    <div className="thought-block">
-                      <div
-                        className="thought-head"
-                        onClick={() => setOpenThoughts((p) => ({ ...p, [i]: !p[i] }))}
-                      >
-                        <CloudOutlined />
-                        思考过程 · {it.thought.length} 字符
-                        <span style={{ marginLeft: "auto" }}>{openThoughts[i] ? "收起" : "展开"}</span>
-                      </div>
-                      {openThoughts[i] && <div className="thought-body">{it.thought}</div>}
+                {it.role === "user" ? (
+                  <div className="chat-bubble chat-bubble-user">{it.content}</div>
+                ) : (
+                  <div className="chat-ai">
+                    <div className="chat-ai-head">
+                      <span className="chat-ai-badge">T</span>
+                      <span className="chat-ai-name">TeamAI</span>
+                      {it.streaming && <span className="agent-status-dot agent-status-dot-busy" />}
+                      {!it.streaming && it.content && <MsgCopyBtn text={it.content} />}
                     </div>
-                  )}
-                  {it.tools && it.tools.length > 0 && (
-                    <div style={{ marginBottom: 6 }}>
-                      {it.tools.map((t, ti) => (
-                        <div key={ti} className="tool-card">
-                          <span className={`tool-card-icon ${it.streaming ? "tool-card-run" : "tool-card-ok"}`}>
-                            {it.streaming ? "…" : <CheckOutlined />}
-                          </span>
-                          <span className="tool-card-name">{t}</span>
+                    {it.thought && (
+                      <div className="thought-block">
+                        <div
+                          className="thought-head"
+                          onClick={() => setOpenThoughts((p) => ({ ...p, [i]: !p[i] }))}
+                        >
+                          <CloudOutlined />
+                          思考过程 · {it.thought.length} 字符
+                          <span style={{ marginLeft: "auto" }}>{openThoughts[i] ? "收起" : "展开"}</span>
                         </div>
-                      ))}
+                        {openThoughts[i] && <div className="thought-body">{it.thought}</div>}
+                      </div>
+                    )}
+                    {it.tools && it.tools.length > 0 && (
+                      <div style={{ marginBottom: 6 }}>
+                        {it.tools.map((t, ti) => (
+                          <div key={ti} className="tool-card">
+                            <span className={`tool-card-icon ${it.streaming ? "tool-card-run" : "tool-card-ok"}`}>
+                              {it.streaming ? "…" : <CheckOutlined />}
+                            </span>
+                            <span className="tool-card-name">{t}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="chat-ai-content">
+                      <Markdown text={it.content} />
+                      {it.streaming && <span className="chat-cursor">▍</span>}
                     </div>
-                  )}
-                  <div className="chat-bubble">
-                    {it.content}
-                    {it.streaming && <span className="chat-cursor">▍</span>}
                   </div>
-                </div>
+                )}
               </div>
             ))
           )}
@@ -522,6 +519,7 @@ export default function AgentPage() {
         <div className="agent-inputbar">
           <div className="agent-inputbox">
             <Input.TextArea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onPressEnter={(e) => {
@@ -530,15 +528,67 @@ export default function AgentPage() {
                   void send();
                 }
               }}
-              placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
-              autoSize={{ minRows: 1, maxRows: 6 }}
+              placeholder={mode === "gateway" ? "向 AI 提问，Enter 发送 / Shift+Enter 换行" : "描述要完成的任务，AI 将在工作目录中执行"}
+              autoSize={{ minRows: 2, maxRows: 8 }}
             />
             <div className="agent-inputrow">
-              <Tag color={mode === "gateway" ? "geekblue" : "purple"} style={{ marginInlineEnd: 0 }}>
-                {mode === "gateway" ? `网关 · ${model ?? "未选模型"}` : `本地 · ${cli ?? "未选 CLI"}`}
-              </Tag>
-              {mode === "cli" && workdir && (
-                <span className="agent-topbar-path">{workdir}</span>
+              {api.isElectron && (
+                <div className="agent-mode-seg">
+                  <button
+                    className={`agent-mode-seg-btn${mode === "gateway" ? " agent-mode-seg-on" : ""}`}
+                    disabled={offline}
+                    onClick={() => setMode("gateway")}
+                  >
+                    网关
+                  </button>
+                  <button
+                    className={`agent-mode-seg-btn${mode === "cli" ? " agent-mode-seg-on" : ""}`}
+                    onClick={() => setMode("cli")}
+                  >
+                    本地 CLI
+                  </button>
+                </div>
+              )}
+              {mode === "gateway" ? (
+                <Select
+                  size="small"
+                  variant="borderless"
+                  className="agent-pill-select"
+                  style={{ minWidth: 170 }}
+                  placeholder="选择模型"
+                  value={model}
+                  onChange={setModel}
+                  options={models.map((m) => ({
+                    value: m.model,
+                    label: `${m.model}（${m.providerType}）`,
+                  }))}
+                  notFoundContent="服务端尚未配置 provider"
+                />
+              ) : (
+                <>
+                  <Select
+                    size="small"
+                    variant="borderless"
+                    className="agent-pill-select"
+                    style={{ minWidth: 110 }}
+                    placeholder="选择 CLI"
+                    value={cli}
+                    onChange={setCli}
+                    options={clis.map((c) => ({
+                      value: c.kind,
+                      label: `${c.kind}（${c.channel}）`,
+                    }))}
+                    notFoundContent="未检测到已安装的 CLI"
+                  />
+                  <button
+                    className="agent-workdir-chip"
+                    title={workdir || "选择工作目录"}
+                    onClick={() => void api.pickDir().then((d) => d && setWorkdir(d))}
+                  >
+                    <FolderOpenOutlined />
+                    <span className="agent-workdir-name">{workdirName || "选择目录"}</span>
+                  </button>
+                </>
               )}
               <span style={{ flex: 1 }} />
               {mode === "cli" && sending ? (
@@ -556,10 +606,15 @@ export default function AgentPage() {
                   disabled={!cliReady || sending || !input.trim()}
                   title="发送"
                 >
-                  <SendOutlined />
+                  <ArrowUpOutlined />
                 </button>
               )}
             </div>
+          </div>
+          <div className="agent-input-hint">
+            {mode === "gateway"
+              ? `网关模式 · ${model ?? "未选模型"} · 用量计入团队统计`
+              : `本地 CLI · ${cli ?? "未选 CLI"}${workdir ? ` · ${workdir}` : " · 未选工作目录"}`}
           </div>
         </div>
       </div>
