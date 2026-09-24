@@ -22,6 +22,10 @@ const api = {
   repoRemoteUrl: (group: string, name: string, email: string) =>
     ipcRenderer.invoke("repos:remoteUrl", group, name, email),
   pickDir: () => ipcRenderer.invoke("dialog:pickDir"),
+  ideListDir: (root: string, rel: string) => ipcRenderer.invoke("ide:listDir", root, rel),
+  ideReadFile: (root: string, rel: string) => ipcRenderer.invoke("ide:readFile", root, rel),
+  ideWriteFile: (root: string, rel: string, content: string) =>
+    ipcRenderer.invoke("ide:writeFile", root, rel, content),
   gitClone: (repoUrl: string, targetDir: string) =>
     ipcRenderer.invoke("git:clone", repoUrl, targetDir),
   pushWorkspace: (input: {

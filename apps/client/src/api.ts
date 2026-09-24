@@ -17,6 +17,18 @@ export interface RepoView {
   createdAt: number;
 }
 
+export interface IdeNode {
+  name: string;
+  path: string;
+  dir: boolean;
+}
+
+export interface IdeFile {
+  content: string;
+  binary: boolean;
+  size: number;
+}
+
 export interface ImMessage {
   id: string;
   channelId: string;
@@ -338,6 +350,21 @@ export const api = {
   async pickDir(): Promise<string | null> {
     if (isElectron) return window.teamai.pickDir();
     return null;
+  },
+
+  async ideListDir(root: string, rel = ""): Promise<IdeNode[]> {
+    if (isElectron) return window.teamai.ideListDir(root, rel);
+    throw new Error("IDE 仅在桌面客户端可用");
+  },
+
+  async ideReadFile(root: string, rel: string): Promise<IdeFile> {
+    if (isElectron) return window.teamai.ideReadFile(root, rel);
+    throw new Error("IDE 仅在桌面客户端可用");
+  },
+
+  async ideWriteFile(root: string, rel: string, content: string): Promise<{ size: number }> {
+    if (isElectron) return window.teamai.ideWriteFile(root, rel, content);
+    throw new Error("IDE 仅在桌面客户端可用");
   },
 
   async gitClone(repoUrl: string, targetDir: string): Promise<void> {

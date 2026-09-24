@@ -2,6 +2,7 @@ import { ipcMain, dialog } from "electron";
 import { detectClis } from "./headlessManager.js";
 import { listModelRoutes } from "./modelRegistry.js";
 import { cloneRepo, pushWorkspace } from "./gitWorkspace.js";
+import { ideListDir, ideReadFile, ideWriteFile } from "./ideWorkspace.js";
 import { ImClient } from "./imClient.js";
 import { respondAgentPermission, runAgentCli, stopAgentCli } from "./agentRunner.js";
 import {
@@ -45,6 +46,11 @@ export function registerIpcHandlers() {
     const r = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
     return r.canceled ? null : r.filePaths[0];
   });
+  ipcMain.handle("ide:listDir", (_e, root: string, rel: string) => ideListDir(root, rel ?? ""));
+  ipcMain.handle("ide:readFile", (_e, root: string, rel: string) => ideReadFile(root, rel));
+  ipcMain.handle("ide:writeFile", (_e, root: string, rel: string, content: string) =>
+    ideWriteFile(root, rel, content),
+  );
   ipcMain.handle("git:clone", (_e, repoUrl: string, targetDir: string) =>
     cloneRepo(repoUrl, targetDir),
   );

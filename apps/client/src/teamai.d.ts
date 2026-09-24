@@ -42,6 +42,9 @@ export interface TeamAiApi {
   ): Promise<Array<{ hash: string; author: string; at: number; message: string }>>;
   repoRemoteUrl(group: string, name: string, email: string): Promise<string>;
   pickDir(): Promise<string | null>;
+  ideListDir(root: string, rel: string): Promise<Array<{ name: string; path: string; dir: boolean }>>;
+  ideReadFile(root: string, rel: string): Promise<{ content: string; binary: boolean; size: number }>;
+  ideWriteFile(root: string, rel: string, content: string): Promise<{ size: number }>;
   gitClone(repoUrl: string, targetDir: string): Promise<void>;
   pushWorkspace(input: {
     cwd: string;

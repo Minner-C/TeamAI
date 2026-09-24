@@ -7,10 +7,12 @@ import {
   FileZipOutlined,
   BarChartOutlined,
   SettingOutlined,
+  CodeOutlined,
 } from "@ant-design/icons";
 import { useAppStore, type PageKey } from "./store/appStore";
 import LoginPage from "./pages/LoginPage";
 import AgentPage from "./pages/AgentPage";
+import IdePage from "./pages/IdePage";
 import ImPage from "./pages/ImPage";
 import ReposPage from "./pages/ReposPage";
 import EnvsPage from "./pages/EnvsPage";
@@ -22,6 +24,7 @@ const { Content } = Layout;
 
 const PAGES: Record<PageKey, React.ReactNode> = {
   agent: <AgentPage />,
+  ide: <IdePage />,
   im: <ImPage />,
   repos: <ReposPage />,
   envs: <EnvsPage />,
@@ -44,10 +47,12 @@ export default function App() {
   const items: RailItem[] = offline
     ? [
         { key: "agent", icon: <RobotOutlined />, label: "Agent 工作台（本地）" },
+        { key: "ide", icon: <CodeOutlined />, label: "代码编辑器" },
         { key: "settings", icon: <SettingOutlined />, label: "设置" },
       ]
     : [
         { key: "agent", icon: <RobotOutlined />, label: "Agent 工作台" },
+        { key: "ide", icon: <CodeOutlined />, label: "代码编辑器" },
         { key: "im", icon: <MessageOutlined />, label: "团队消息" },
         { key: "repos", icon: <FolderOutlined />, label: "项目仓库" },
         { key: "envs", icon: <CloudServerOutlined />, label: "在线环境" },
@@ -56,10 +61,10 @@ export default function App() {
         { key: "settings", icon: <SettingOutlined />, label: "设置" },
       ];
 
-  const activePage: PageKey = offline && page !== "agent" && page !== "settings" ? "agent" : page;
+  const activePage: PageKey = offline && page !== "agent" && page !== "settings" && page !== "ide" ? "agent" : page;
   const navItems = items.filter((i) => i.key !== "settings");
   const settingsItem = items.find((i) => i.key === "settings");
-  const fullHeight = activePage === "agent" || activePage === "im";
+  const fullHeight = activePage === "agent" || activePage === "im" || activePage === "ide";
 
   return (
     <Layout className="app-shell" style={{ flexDirection: "row" }}>
