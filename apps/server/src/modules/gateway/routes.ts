@@ -277,23 +277,41 @@ export async function gatewayRoutes(app: FastifyInstance) {
 
   app.patch("/api/admin/providers/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { enabled?: boolean; models?: string[] } | undefined;
-    if (body?.enabled == null && !body?.models) return reply.code(400).send({ error: "enabled or models required" });
+    const body = req.body as
+      | { enabled?: boolean; models?: string[]; name?: string; type?: string; baseUrl?: string; apiKey?: string }
+      | undefined;
+    const hasProfile = !!(body?.name?.trim() || body?.type?.trim() || body?.baseUrl?.trim() || body?.apiKey);
+    if (!body || (body.enabled == null && !body.models && !hasProfile)) {
+      return reply.code(400).send({ error: "enabled, models or profile fields required" });
+    }
     const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
     if (!row) return reply.code(404).send({ error: "provider not found" });
+    const view = store.updateProvider(app.db, app.config.jwtSecret, id, {
+      name: body.name,
+      type: body.type,
+      baseUrl: body.baseUrl,
+      apiKey: body.apiKey,
+      models: body.models,
+    });
     if (body.enabled != null) store.setProviderEnabled(app.db, id, body.enabled);
-    if (body.models) {
-      app.db.prepare("UPDATE providers SET models_json = ? WHERE id = ?").run(JSON.stringify(body.models), id);
-    }
+    const changes = [
+      body.name?.trim() && body.name.trim() !== row.name ? `name=${body.name.trim()}` : "",
+      body.type?.trim() && body.type.trim() !== row.type ? `type=${body.type.trim()}` : "",
+      body.baseUrl?.trim() && body.baseUrl.trim() !== row.base_url ? `baseUrl=${body.baseUrl.trim()}` : "",
+      body.apiKey ? "apiKey=已更新" : "",
+      body.models ? `models=${body.models.join(",")}` : "",
+      body.enabled != null ? `enabled=${body.enabled ? 1 : 0}` : "",
+    ].filter(Boolean);
     recordAudit(app.db, {
       userId: req.user!.id,
       userEmail: req.user!.email,
-      action: body.models ? "provider.update_models" : body.enabled ? "provider.enable" : "provider.disable",
-      target: row.name,
-      detail: body.models ? `models=${body.models.join(",")}` : undefined,
+      action: hasProfile ? "provider.update" : body.models ? "provider.update_models" : body.enabled ? "provider.enable" : "provider.disable",
+      target: body.name?.trim() || row.name,
+      detail: changes.join(" ") || undefined,
       ip: req.ip,
     });
-    return { ok: true };
+    const finalRow = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as unknown as ProviderRow;
+    return store.toProviderView(finalRow) ?? view;
   });
 
   app.post("/api/admin/providers/:id/test", { preHandler: requireAdmin }, async (req, reply) => {

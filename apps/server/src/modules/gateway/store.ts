@@ -54,6 +54,31 @@ export function setProviderEnabled(db: Db, id: string, enabled: boolean): boolea
   return r.changes > 0;
 }
 
+export function updateProvider(
+  db: Db,
+  secret: string,
+  id: string,
+  patch: { name?: string; type?: string; baseUrl?: string; apiKey?: string; models?: string[] },
+): ProviderView | null {
+  const row = db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as unknown as ProviderRow | undefined;
+  if (!row) return null;
+  const name = patch.name?.trim() || row.name;
+  const type = patch.type?.trim() || row.type;
+  const baseUrl = patch.baseUrl?.trim() || row.base_url;
+  const keyEnc = patch.apiKey ? encryptText(patch.apiKey, secret) : row.key_enc;
+  const modelsJson = patch.models ? JSON.stringify(patch.models) : row.models_json;
+  db.prepare("UPDATE providers SET name = ?, type = ?, base_url = ?, key_enc = ?, models_json = ? WHERE id = ?").run(
+    name,
+    type,
+    baseUrl,
+    keyEnc,
+    modelsJson,
+    id,
+  );
+  const updated = db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as unknown as ProviderRow;
+  return toProviderView(updated);
+}
+
 export function deleteProvider(db: Db, id: string): boolean {
   return db.prepare("DELETE FROM providers WHERE id = ?").run(id).changes > 0;
 }

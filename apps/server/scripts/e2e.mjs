@@ -165,6 +165,28 @@ try {
     body: JSON.stringify({ models: ["mock-gpt"] }),
   });
 
+  const patchFull = await fetch(`${BASE}/api/admin/providers/${p1Id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({
+      name: "mock-openai-x",
+      baseUrl: `http://127.0.0.1:${UPSTREAM_PORT}`,
+      apiKey: "rotated-key",
+      models: ["mock-gpt"],
+    }),
+  });
+  const pf = await patchFull.json();
+  check(
+    "PATCH 完整编辑 provider（名称/BaseURL/Key/模型）",
+    patchFull.status === 200 && pf.name === "mock-openai-x" && pf.baseUrl.includes("127.0.0.1:") && Array.isArray(pf.models),
+    JSON.stringify(pf),
+  );
+  await fetch(`${BASE}/api/admin/providers/${p1Id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ name: "mock-openai", baseUrl: `http://localhost:${UPSTREAM_PORT}`, apiKey: "real-openai-key" }),
+  });
+
   const p2 = await fetch(`${BASE}/api/admin/providers`, {
     method: "POST",
     headers: authH,

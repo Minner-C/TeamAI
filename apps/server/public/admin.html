@@ -331,7 +331,7 @@ async function renderProviders(c) {
       <td><span class="tag ${p.enabled ? "on" : "off"}">${p.enabled ? "启用" : "停用"}</span></td>
       <td>
         <button class="btn sm ghost" data-act="test" data-id="${p.id}" data-name="${esc(p.name)}">${t?.loading ? '<span class="spin"></span>' : "测试"}</button>
-        <button class="btn sm ghost" data-act="edit" data-id="${p.id}" data-name="${esc(p.name)}" data-models="${esc(p.models.join(","))}">编辑模型</button>
+        <button class="btn sm ghost" data-act="edit" data-id="${p.id}" data-name="${esc(p.name)}" data-type="${esc(p.type)}" data-url="${esc(p.baseUrl)}" data-models="${esc(p.models.join(","))}">编辑</button>
         <button class="btn sm ghost" data-act="toggle" data-id="${p.id}" data-enabled="${p.enabled ? 0 : 1}">${p.enabled ? "停用" : "启用"}</button>
         <button class="btn sm danger" data-act="del" data-id="${p.id}" data-name="${esc(p.name)}">删除</button>
       </td>
@@ -386,13 +386,32 @@ async function renderProviders(c) {
     const { act, id, name, enabled } = btn.dataset;
     if (act === "edit") {
       openModal({
-        title: `编辑模型：${name}`,
+        title: `编辑 Provider：${name}`,
         okText: "保存",
-        body: field("模型（逗号分隔，空 = 全部）", `<input id="m-edit-models" value="${btn.dataset.models}" placeholder="留空表示转发全部模型" />`),
+        body:
+          field("名称", `<input id="m-e-name" value="${esc(btn.dataset.name)}" />`) +
+          field("协议类型", `<select id="m-e-type">
+            <option value="openai-compatible"${btn.dataset.type === "openai-compatible" ? " selected" : ""}>OpenAI 兼容（DeepSeek / GLM / Qwen / Moonshot…）</option>
+            <option value="anthropic"${btn.dataset.type === "anthropic" ? " selected" : ""}>Anthropic</option>
+            <option value="gemini"${btn.dataset.type === "gemini" ? " selected" : ""}>Gemini</option>
+          </select>`) +
+          field("Base URL", `<input id="m-e-url" value="${esc(btn.dataset.url)}" />`) +
+          field("真实 API Key（留空 = 沿用原 Key）", '<input id="m-e-key" type="password" placeholder="不修改请留空" />') +
+          field("模型（逗号分隔，空 = 全部）", `<input id="m-e-models" value="${esc(btn.dataset.models)}" placeholder="留空表示转发全部模型" />`),
         onOk: async (b) => {
-          const models = $("#m-edit-models", b).value.split(",").map((s) => s.trim()).filter(Boolean);
-          await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify({ models }) });
-          toast(models.length ? `已保存 ${models.length} 个模型` : "已改为转发全部模型");
+          const newName = $("#m-e-name", b).value.trim();
+          const newUrl = $("#m-e-url", b).value.trim();
+          if (!newName || !newUrl) { toast("名称、Base URL 均必填", "err"); return false; }
+          const payload = {
+            name: newName,
+            type: $("#m-e-type", b).value,
+            baseUrl: newUrl,
+            models: $("#m-e-models", b).value.split(",").map((s) => s.trim()).filter(Boolean),
+          };
+          const newKey = $("#m-e-key", b).value;
+          if (newKey) payload.apiKey = newKey;
+          await req(`/api/admin/providers/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          toast("Provider 已更新");
           renderTab();
         },
       });
@@ -811,7 +830,8 @@ async function renderAudit(c) {
   const { logs } = await req("/api/admin/audit?limit=200");
   const ACTION_CN = {
     "auth.login": "登录", "auth.login_failed": "登录失败",
-    "user.create": "创建成员", "provider.create": "添加 Provider", "provider.enable": "启用 Provider",
+    "user.create": "创建成员", "provider.create": "添加 Provider", "provider.update": "编辑 Provider",
+    "provider.enable": "启用 Provider",
     "provider.disable": "停用 Provider", "provider.delete": "删除 Provider", "provider.update_models": "更新模型列表",
     "key.create": "签发 Key", "key.revoke": "吊销 Key",
     "repo.create": "创建仓库", "repo.delete": "删除仓库",
