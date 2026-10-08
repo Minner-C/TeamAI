@@ -234,8 +234,10 @@ export function listMyChannels(db: Db, userId: string) {
       )
       .get(c.id, member.last_read_at, userId) as { n: number };
     let displayName = c.name;
+    let peerId: string | null = null;
     if (c.type === "dm") {
       const otherId = channelMembers(db, c.id).find((id) => id !== userId);
+      peerId = otherId ?? null;
       const other = otherId
         ? (db.prepare("SELECT name FROM users WHERE id = ?").get(otherId) as { name: string } | undefined)
         : undefined;
@@ -248,6 +250,7 @@ export function listMyChannels(db: Db, userId: string) {
       topic: c.topic ?? "",
       ownerId: c.owner_id,
       createdAt: c.created_at,
+      peerId,
       unread: unread.n,
       lastMessage: last ? toMessageView(db, last) : null,
     };

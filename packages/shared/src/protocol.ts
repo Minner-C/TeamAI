@@ -13,6 +13,7 @@ export type WsServerEvent =
   | { type: "message:new"; message: Message }
   | { type: "message:ack"; channelId: string; messageId: string; createdAt: number }
   | { type: "presence"; userId: string; online: boolean }
+  | { type: "presence:list"; userIds: string[] }
   | { type: "typing"; channelId: string; userId: string }
   | { type: "error"; reason: string }
   | { type: "pong" };

@@ -186,6 +186,7 @@ export default function ImPage() {
   const [messages, setMessages] = useState<ImMessage[]>([]);
   const [input, setInput] = useState("");
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({});
+  const [onlineIds, setOnlineIds] = useState<ReadonlySet<string>>(new Set());
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const typingSentAt = useRef(0);
@@ -223,6 +224,35 @@ export default function ImPage() {
     api.orgTree().then((o) => { setOrgDepts(o.departments); setOrgUsers(o.users); }).catch(() => {});
     api.listModels().then(setModels).catch(() => {});
     const off = api.connectIm((ev) => {
+      if (ev.type === "auth:ok") {
+        void refreshChannels();
+        const cid = activeRef.current;
+        if (cid) {
+          api
+            .listMessages(cid)
+            .then((msgs) => {
+              if (activeRef.current !== cid) return;
+              setMessages((prev) => {
+                const seen = new Set(prev.map((m) => m.id));
+                const fresh = msgs.filter((m) => !seen.has(m.id));
+                return fresh.length ? [...prev, ...fresh] : prev;
+              });
+              void api.markRead(cid);
+            })
+            .catch(() => {});
+        }
+      }
+      if (ev.type === "presence:list") {
+        setOnlineIds(new Set(ev.userIds));
+      }
+      if (ev.type === "presence") {
+        setOnlineIds((prev) => {
+          const next = new Set(prev);
+          if (ev.online) next.add(ev.userId);
+          else next.delete(ev.userId);
+          return next;
+        });
+      }
       if (ev.type === "message:new") {
         setTypingUsers((prev) => {
           if (!ev.message.senderUserId || !(ev.message.senderUserId in prev)) return prev;
@@ -544,7 +574,9 @@ export default function ImPage() {
                 style={{ paddingLeft: 10 + (depth + 1) * 16 }}
                 onClick={() => void openDmWith(u)}
               >
-                <UserAvatar name={u.name} size={28} />
+                <Badge dot={onlineIds.has(u.id)} color="#22c55e" offset={[-2, 22]}>
+                  <UserAvatar name={u.name} size={28} />
+                </Badge>
                 <div className="im-org-user-info">
                   <div className="im-org-user-name">
                     {u.name}
@@ -612,9 +644,11 @@ export default function ImPage() {
                       <TeamOutlined />
                     </div>
                   ) : (
-                    <div className="im-avatar im-avatar-lg" style={{ background: avatarColor(ch.name) }}>
-                      {ch.name.slice(0, 1).toUpperCase()}
-                    </div>
+                    <Badge dot={!!ch.peerId && onlineIds.has(ch.peerId)} color="#22c55e" offset={[-4, 32]}>
+                      <div className="im-avatar im-avatar-lg" style={{ background: avatarColor(ch.name) }}>
+                        {ch.name.slice(0, 1).toUpperCase()}
+                      </div>
+                    </Badge>
                   )}
                   <div className="im-conv-body">
                     <div className="im-conv-row">
@@ -655,6 +689,14 @@ export default function ImPage() {
             <div className="im-header">
               <div className="im-header-info">
                 <span className="im-header-name">{active.name}</span>
+                {active.type === "dm" && (
+                  <span
+                    className="im-header-count"
+                    style={{ color: active.peerId && onlineIds.has(active.peerId) ? "#22c55e" : "#6b6b72" }}
+                  >
+                    {active.peerId && onlineIds.has(active.peerId) ? "● 在线" : "○ 离线"}
+                  </span>
+                )}
                 {active.type === "group" && (
                   <>
                     <span className="im-header-count">{members.length} 名成员</span>

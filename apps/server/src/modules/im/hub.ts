@@ -26,6 +26,17 @@ export function broadcastToChannel(db: Db, channelId: string, event: WsServerEve
   }
 }
 
+export function broadcastToAll(event: WsServerEvent, excludeUserId?: string): void {
+  for (const [uid, sockets] of online) {
+    if (excludeUserId && uid === excludeUserId) continue;
+    for (const ws of sockets) sendTo(ws, event);
+  }
+}
+
+export function isOnline(userId: string): boolean {
+  return (online.get(userId)?.size ?? 0) > 0;
+}
+
 export function onlineUserIds(): string[] {
   return [...online.keys()];
 }

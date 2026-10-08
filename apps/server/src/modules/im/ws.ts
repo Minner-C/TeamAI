@@ -3,7 +3,7 @@ import type { WebSocket } from "ws";
 import { WS_PATH } from "@teamai/shared";
 import type { WsClientEvent, WsServerEvent } from "@teamai/shared";
 import { verifyToken } from "../core/crypto.js";
-import { addConnection, removeConnection, sendTo, broadcastToChannel } from "./hub.js";
+import { addConnection, removeConnection, sendTo, broadcastToChannel, broadcastToAll, isOnline, onlineUserIds } from "./hub.js";
 import { insertMessage, isMember, toMessageView } from "./store.js";
 import { triggerRolesForMessage } from "../airole/engine.js";
 
@@ -28,8 +28,11 @@ export async function imWs(app: FastifyInstance) {
             return;
           }
           userId = payload.uid;
+          const wasOffline = !isOnline(userId);
           addConnection(userId, socket);
           sendTo(socket, { type: "auth:ok", userId });
+          sendTo(socket, { type: "presence:list", userIds: onlineUserIds() });
+          if (wasOffline) broadcastToAll({ type: "presence", userId, online: true }, userId);
           break;
         }
         case "ping":
@@ -75,7 +78,10 @@ export async function imWs(app: FastifyInstance) {
     });
 
     socket.on("close", () => {
-      if (userId) removeConnection(userId, socket);
+      if (userId) {
+        removeConnection(userId, socket);
+        if (!isOnline(userId)) broadcastToAll({ type: "presence", userId, online: false });
+      }
     });
   });
 }

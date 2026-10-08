@@ -82,6 +82,7 @@ export interface ChannelView {
   topic: string;
   ownerId: string;
   createdAt: number;
+  peerId: string | null;
   unread: number;
   lastMessage: ImMessage | null;
 }
@@ -140,6 +141,8 @@ export type ImEvent =
   | { type: "auth:ok"; userId: string }
   | { type: "message:new"; message: ImMessage }
   | { type: "message:ack"; channelId: string; messageId: string; createdAt: number }
+  | { type: "presence"; userId: string; online: boolean }
+  | { type: "presence:list"; userIds: string[] }
   | { type: "typing"; channelId: string; userId: string }
   | { type: "error"; reason: string }
   | { type: "pong" };
@@ -591,19 +594,42 @@ export const api = {
       return window.teamai.onImEvent((ev) => handler(ev as ImEvent));
     }
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
-    imSocket = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: directToken }));
-    ws.onmessage = (e) => {
-      try {
-        handler(JSON.parse(e.data as string) as ImEvent);
-      } catch {
-        // ignore malformed frames
-      }
+    let closed = false;
+    let ws: WebSocket | null = null;
+    let retry = 0;
+    let timer: number | undefined;
+    const connect = () => {
+      if (closed) return;
+      ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+      imSocket = ws;
+      ws.onopen = () => {
+        retry = 0;
+        ws?.send(JSON.stringify({ type: "auth", token: directToken }));
+      };
+      ws.onmessage = (e) => {
+        try {
+          handler(JSON.parse(e.data as string) as ImEvent);
+        } catch {
+          // ignore malformed frames
+        }
+      };
+      ws.onclose = () => {
+        if (imSocket === ws) imSocket = null;
+        if (closed) return;
+        const delay = Math.min(1000 * 2 ** retry++, 15000);
+        timer = window.setTimeout(connect, delay);
+      };
     };
+    connect();
     return () => {
-      if (imSocket === ws) imSocket = null;
-      ws.close();
+      closed = true;
+      if (timer != null) window.clearTimeout(timer);
+      if (ws) {
+        const current = ws;
+        if (imSocket === current) imSocket = null;
+        current.onclose = null;
+        current.close();
+      }
     };
   },
 

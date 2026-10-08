@@ -121,6 +121,7 @@ try {
 
   const users = await (await fetch(`${BASE}/api/users`, { headers: authH })).json();
   check("用户列表包含两人", users.users.length === 2);
+  const adminId = users.users.find((u) => u.email === "admin@teamai.local")?.id;
 
   const chRes = await fetch(`${BASE}/api/channels`, {
     method: "POST",
@@ -133,6 +134,15 @@ try {
   const adminWs = await wsConnect(adminToken);
   const memberWs = await wsConnect(memberToken);
   check("双方 WebSocket 认证成功", true);
+
+  const pl = await memberWs.waitFor((e) => e.type === "presence:list");
+  check(
+    "新连接收到 presence:list 含双方在线",
+    pl.userIds.includes(adminId) && pl.userIds.includes(member.id),
+    JSON.stringify(pl),
+  );
+  await adminWs.waitFor((e) => e.type === "presence" && e.userId === member.id && e.online === true);
+  check("成员上线时 admin 收到 presence 上线事件", true);
 
   const sendRes = await fetch(`${BASE}/api/channels/${channel.id}/messages`, {
     method: "POST",
@@ -329,8 +339,12 @@ try {
   });
   check("非法 token 被拒", outsider.status === 401);
 
-  adminWs.ws.close();
   memberWs.ws.close();
+  const offEv = await adminWs.waitFor(
+    (e) => e.type === "presence" && e.userId === member.id && e.online === false,
+  );
+  check("成员断开后 admin 收到 presence 离线事件", !!offEv);
+  adminWs.ws.close();
 
   console.log(failed === 0 ? "\nALL IM E2E TESTS PASSED" : `\n${failed} TEST(S) FAILED`);
 } finally {
