@@ -2,6 +2,15 @@
 
 服务端是一体化进程：API + 管理控制台（`/admin`）+ 内置 Git 托管 + 在线环境。桌面客户端（Electron）单独打包分发，见文末。
 
+## 0. 一键启动（最快）
+
+```bash
+./start.sh           # Linux / macOS：自动检查环境、装依赖、生成 .env、启动
+./start.sh --docker  # 使用 Docker Compose 启动
+```
+
+Windows 双击 `start.bat` 即可。脚本会自动生成随机 `TEAMAI_JWT_SECRET` 写入 `.env`。
+
 ## 1. Docker Compose（推荐）
 
 ```bash
