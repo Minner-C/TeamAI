@@ -161,6 +161,24 @@ CREATE TABLE IF NOT EXISTS provider_keys (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_provider_keys_provider ON provider_keys(provider_id);
+CREATE TABLE IF NOT EXISTS repo_webhooks (
+  id TEXT PRIMARY KEY,
+  repo_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  secret TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_webhooks_repo ON repo_webhooks(repo_id);
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
+  revoked_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
 `;
 
 export function openDb(config: ServerConfig): Db {

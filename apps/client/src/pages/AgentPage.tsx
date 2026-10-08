@@ -109,10 +109,17 @@ export default function AgentPage() {
     }
   }, [agentDraft, clearAgentDraft]);
 
-  function refreshSessions() {
+  function refreshSessions(q?: string) {
     if (offline) return;
-    api.listSessions().then(setSessions).catch(() => undefined);
+    api.listSessions(q).then(setSessions).catch(() => undefined);
   }
+
+  useEffect(() => {
+    const kw = sessionFilter.trim();
+    if (offline) return;
+    const t = setTimeout(() => refreshSessions(kw || undefined), 350);
+    return () => clearTimeout(t);
+  }, [sessionFilter, offline]);
 
   useEffect(() => {
     if (!offline) {
@@ -200,16 +207,14 @@ export default function AgentPage() {
   }, [items]);
 
   const groupedSessions = useMemo(() => {
-    const kw = sessionFilter.trim().toLowerCase();
-    const filtered = kw ? sessions.filter((s) => s.title.toLowerCase().includes(kw)) : sessions;
     const groups = new Map<string, SessionView[]>();
-    for (const s of filtered) {
+    for (const s of sessions) {
       const g = sessionGroup(s.createdAt);
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g)!.push(s);
     }
     return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => ({ group: g, list: groups.get(g)! }));
-  }, [sessions, sessionFilter]);
+  }, [sessions]);
 
   function newChat() {
     if (sending) {
@@ -379,7 +384,7 @@ export default function AgentPage() {
               size="small"
               allowClear
               prefix={<SearchOutlined style={{ color: "#6d6d73" }} />}
-              placeholder="搜索会话…"
+              placeholder="搜索会话（含内容）…"
               value={sessionFilter}
               onChange={(e) => setSessionFilter(e.target.value)}
             />

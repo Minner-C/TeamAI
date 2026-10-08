@@ -18,6 +18,7 @@ import {
   repoCommits,
   saveSession,
   setConnection,
+  setTokens,
   usageSummary,
   type ChatMessage,
 } from "./serverClient.js";
@@ -29,6 +30,10 @@ export function registerIpcHandlers() {
   ipcMain.handle("server:health", () => checkServerHealth());
   ipcMain.handle("server:setUrl", (_e, url: string) => {
     setConnection(url, null);
+    return true;
+  });
+  ipcMain.handle("connection:setTokens", (_e, token: string, refreshToken?: string) => {
+    setTokens(token, refreshToken);
     return true;
   });
   ipcMain.handle("auth:login", (_e, email: string, password: string) => login(email, password));

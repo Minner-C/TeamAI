@@ -16,6 +16,7 @@ import {
   type RepoRow,
 } from "./store.js";
 import { recordAudit } from "../audit/store.js";
+import { addWebhook, deleteWebhook, listWebhooks } from "./webhooks.js";
 import type { UserRow } from "../../types.js";
 
 function toView(db: import("../../db.js").Db, r: RepoRow) {
@@ -205,5 +206,97 @@ export async function gitRoutes(app: FastifyInstance) {
       ip: req.ip,
     });
     return { ok: true };
+  });
+
+  app.get("/:id/webhooks", { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = getRepo(app, id);
+    if (!row) return reply.code(404).send({ error: "not found" });
+    const user = req.user as UserRow;
+    if (!canManageRepo(row, user.id, user.role === "admin")) {
+      return reply.code(403).send({ error: "only owner or admin can manage webhooks" });
+    }
+    return {
+      webhooks: listWebhooks(app.db, id).map((h) => ({
+        id: h.id,
+        url: h.url,
+        hasSecret: !!h.secret,
+        enabled: !!h.enabled,
+        createdAt: h.created_at,
+      })),
+    };
+  });
+
+  app.post("/:id/webhooks", { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = getRepo(app, id);
+    if (!row) return reply.code(404).send({ error: "not found" });
+    const user = req.user as UserRow;
+    if (!canManageRepo(row, user.id, user.role === "admin")) {
+      return reply.code(403).send({ error: "only owner or admin can manage webhooks" });
+    }
+    const body = req.body as { url?: string; secret?: string } | undefined;
+    const url = body?.url?.trim() ?? "";
+    if (!/^https?:\/\/.+/.test(url)) return reply.code(400).send({ error: "url 必须是 http(s) 地址" });
+    const hook = addWebhook(app.db, id, url, body?.secret?.trim() || undefined);
+    recordAudit(app.db, {
+      userId: user.id,
+      userEmail: user.email,
+      action: "repo.webhook_add",
+      target: `${row.grp}/${row.name}`,
+      detail: url,
+      ip: req.ip,
+    });
+    return reply.code(201).send({ id: hook.id, url: hook.url, hasSecret: !!hook.secret, enabled: true, createdAt: hook.created_at });
+  });
+
+  app.delete("/:id/webhooks/:wid", { preHandler: requireUser }, async (req, reply) => {
+    const { id, wid } = req.params as { id: string; wid: string };
+    const row = getRepo(app, id);
+    if (!row) return reply.code(404).send({ error: "not found" });
+    const user = req.user as UserRow;
+    if (!canManageRepo(row, user.id, user.role === "admin")) {
+      return reply.code(403).send({ error: "only owner or admin can manage webhooks" });
+    }
+    if (!deleteWebhook(app.db, id, wid)) return reply.code(404).send({ error: "webhook not found" });
+    recordAudit(app.db, {
+      userId: user.id,
+      userEmail: user.email,
+      action: "repo.webhook_remove",
+      target: `${row.grp}/${row.name}`,
+      detail: wid,
+      ip: req.ip,
+    });
+    return { ok: true };
+  });
+
+  app.post("/:id/webhooks/:wid/test", { preHandler: requireUser }, async (req, reply) => {
+    const { id, wid } = req.params as { id: string; wid: string };
+    const row = getRepo(app, id);
+    if (!row) return reply.code(404).send({ error: "not found" });
+    const user = req.user as UserRow;
+    if (!canManageRepo(row, user.id, user.role === "admin")) {
+      return reply.code(403).send({ error: "only owner or admin can manage webhooks" });
+    }
+    const hook = listWebhooks(app.db, id).find((h) => h.id === wid);
+    if (!hook) return reply.code(404).send({ error: "webhook not found" });
+    const body = JSON.stringify({
+      event: "ping",
+      repo: { id: row.id, group: row.grp, name: row.name },
+      pusher: { name: user.name, email: user.email },
+      ts: Date.now(),
+    });
+    const headers: Record<string, string> = { "content-type": "application/json", "x-teamai-event": "ping" };
+    if (hook.secret) {
+      const crypto = await import("node:crypto");
+      headers["x-teamai-signature"] = `sha256=${crypto.createHmac("sha256", hook.secret).update(body).digest("hex")}`;
+    }
+    try {
+      const res = await fetch(hook.url, { method: "POST", headers, body, signal: AbortSignal.timeout(10_000) });
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, response: text.slice(0, 300) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 }

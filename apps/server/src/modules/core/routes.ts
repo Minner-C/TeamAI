@@ -1,10 +1,28 @@
 import type { FastifyInstance } from "fastify";
-import { hashPassword, randomId, verifyPassword, signToken } from "./crypto.js";
+import { generateRefreshToken, hashPassword, randomId, sha256Hex, verifyPassword, signToken } from "./crypto.js";
 import { requireAdmin, requireUser } from "./auth.js";
 import { recordAudit } from "../audit/store.js";
 import type { UserRow } from "../../types.js";
 
-const TOKEN_TTL_MS = 7 * 24 * 3600 * 1000;
+const ACCESS_TTL_MS = 12 * 3600 * 1000;
+const REFRESH_TTL_MS = 30 * 24 * 3600 * 1000;
+
+interface RefreshRow {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: number;
+  revoked_at: number | null;
+  created_at: number;
+}
+
+function issueRefreshToken(app: import("fastify").FastifyInstance, userId: string): string {
+  const token = generateRefreshToken();
+  app.db
+    .prepare("INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)")
+    .run(randomId(), userId, sha256Hex(token), Date.now() + REFRESH_TTL_MS, Date.now());
+  return token;
+}
 
 export async function coreRoutes(app: FastifyInstance) {
   app.post("/auth/login", async (req, reply) => {
@@ -19,12 +37,45 @@ export async function coreRoutes(app: FastifyInstance) {
       recordAudit(app.db, { action: "auth.login_failed", target: body.email, ip: req.ip });
       return reply.code(401).send({ error: "invalid credentials" });
     }
-    const token = signToken({ uid: user.id, exp: Date.now() + TOKEN_TTL_MS }, app.config.jwtSecret);
+    const token = signToken({ uid: user.id, exp: Date.now() + ACCESS_TTL_MS }, app.config.jwtSecret);
+    const refreshToken = issueRefreshToken(app, user.id);
     recordAudit(app.db, { userId: user.id, userEmail: user.email, action: "auth.login", ip: req.ip });
     return {
       token,
+      refreshToken,
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
     };
+  });
+
+  app.post("/auth/refresh", async (req, reply) => {
+    const body = req.body as { refreshToken?: string } | undefined;
+    if (!body?.refreshToken) return reply.code(400).send({ error: "refreshToken required" });
+    const row = app.db
+      .prepare("SELECT * FROM refresh_tokens WHERE token_hash = ?")
+      .get(sha256Hex(body.refreshToken)) as RefreshRow | undefined;
+    if (!row || row.revoked_at != null || row.expires_at < Date.now()) {
+      return reply.code(401).send({ error: "invalid refresh token" });
+    }
+    const user = app.db.prepare("SELECT * FROM users WHERE id = ?").get(row.user_id) as UserRow | undefined;
+    if (!user) return reply.code(401).send({ error: "invalid refresh token" });
+    app.db.prepare("UPDATE refresh_tokens SET revoked_at = ? WHERE id = ?").run(Date.now(), row.id);
+    const token = signToken({ uid: user.id, exp: Date.now() + ACCESS_TTL_MS }, app.config.jwtSecret);
+    const refreshToken = issueRefreshToken(app, user.id);
+    return {
+      token,
+      refreshToken,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    };
+  });
+
+  app.post("/auth/logout", async (req, reply) => {
+    const body = req.body as { refreshToken?: string } | undefined;
+    if (body?.refreshToken) {
+      app.db
+        .prepare("UPDATE refresh_tokens SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL")
+        .run(Date.now(), sha256Hex(body.refreshToken));
+    }
+    return reply.send({ ok: true });
   });
 
   app.get("/me", { preHandler: requireUser }, async (req) => {

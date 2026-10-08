@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { spawn } from "node:child_process";
 import { verifyToken } from "../core/crypto.js";
 import { canAccessRepo, findRepo, validRepoPart } from "./store.js";
+import { fireWebhook } from "./webhooks.js";
 
 function authenticate(app: FastifyInstance, req: FastifyRequest): string | null {
   const h = req.headers.authorization ?? "";
@@ -116,4 +117,9 @@ async function handleGit(app: FastifyInstance, req: FastifyRequest, reply: Fasti
   }
   reply.raw.writeHead(status);
   reply.raw.end(payload);
+
+  const isReceivePack = req.method === "POST" && (m[3] ?? "").replace(/\/+$/, "") === "/git-receive-pack";
+  if (isReceivePack && status >= 200 && status < 300) {
+    setImmediate(() => fireWebhook(app.db, repo, "push", uid, req.log));
+  }
 }

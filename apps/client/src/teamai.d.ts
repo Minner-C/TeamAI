@@ -22,10 +22,11 @@ export interface TeamAiApi {
   listModelRoutes(): Promise<Array<{ model: string; cli: string; providerType: string }>>;
   serverHealth(): Promise<boolean>;
   setServerUrl(url: string): Promise<boolean>;
+  setTokens(token: string, refreshToken?: string): Promise<boolean>;
   login(
     email: string,
     password: string,
-  ): Promise<{ token: string; user: { id: string; name: string; email: string; role: string } }>;
+  ): Promise<{ token: string; refreshToken?: string; user: { id: string; name: string; email: string; role: string } }>;
   listModels(): Promise<Array<{ model: string; providerId: string; providerType: string }>>;
   usageSummary(): Promise<{
     totalTokensIn: number;

@@ -45,6 +45,7 @@ export async function storageRoutes(app: FastifyInstance) {
   });
 
   app.get("/sessions", { preHandler: requireUser }, async (req) => {
+    const q = ((req.query as { q?: string }).q ?? "").trim().toLowerCase();
     const rows = (
       req.user!.role === "admin"
         ? app.db.prepare("SELECT * FROM sessions ORDER BY created_at DESC LIMIT 200").all()
@@ -52,8 +53,25 @@ export async function storageRoutes(app: FastifyInstance) {
             .prepare("SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 200")
             .all(req.user!.id)
     ) as unknown as SessionRow[];
+
+    const matched = q
+      ? rows.filter((r) => {
+          if (r.title.toLowerCase().includes(q) || r.cli.toLowerCase().includes(q) || r.task_id.toLowerCase().includes(q)) {
+            return true;
+          }
+          try {
+            if (!fs.existsSync(r.archive_path)) return false;
+            const stat = fs.statSync(r.archive_path);
+            if (stat.size > 2 * 1024 * 1024) return false;
+            return fs.readFileSync(r.archive_path, "utf8").toLowerCase().includes(q);
+          } catch {
+            return false;
+          }
+        })
+      : rows;
+
     return {
-      sessions: rows.map((r) => ({
+      sessions: matched.map((r) => ({
         id: r.id,
         userId: r.user_id,
         taskId: r.task_id,

@@ -1,11 +1,13 @@
 export interface ServerConnection {
   baseUrl: string;
   token: string | null;
+  refreshToken: string | null;
 }
 
 let connection: ServerConnection = {
   baseUrl: process.env.TEAMAI_SERVER_URL ?? "",
   token: null,
+  refreshToken: null,
 };
 
 function normalizeBaseUrl(url: string): string {
@@ -37,11 +39,42 @@ export function getConnection(): ServerConnection {
 }
 
 export function setConnection(baseUrl: string, token: string | null): void {
-  connection = { baseUrl: normalizeBaseUrl(baseUrl), token };
+  connection = { baseUrl: normalizeBaseUrl(baseUrl), token, refreshToken: null };
+}
+
+export function setTokens(token: string, refreshToken?: string): void {
+  connection.token = token;
+  if (refreshToken) connection.refreshToken = refreshToken;
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (!connection.refreshToken || !connection.baseUrl) return false;
+  refreshInFlight ??= (async () => {
+    try {
+      const res = await fetch(`${connection.baseUrl}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken: connection.refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { token: string; refreshToken: string };
+      connection.token = data.token;
+      connection.refreshToken = data.refreshToken;
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
 }
 
 export interface LoginResult {
   token: string;
+  refreshToken?: string;
   user: { id: string; name: string; email: string; role: string };
 }
 
@@ -58,6 +91,7 @@ export async function login(email: string, password: string): Promise<LoginResul
   }
   const data = (await res.json()) as LoginResult;
   connection.token = data.token;
+  connection.refreshToken = data.refreshToken ?? null;
   return data;
 }
 
@@ -152,13 +186,16 @@ export interface RepoView {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const res = await safeFetch(`${connection.baseUrl}${path}`, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${connection.token ?? ""}`,
-      ...(init?.headers ?? {}),
-    },
-  });
+  const doFetch = () =>
+    safeFetch(`${connection.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${connection.token ?? ""}`,
+        ...(init?.headers ?? {}),
+      },
+    });
+  let res = await doFetch();
+  if (res.status === 401 && (await tryRefresh())) res = await doFetch();
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status} ${text}`);

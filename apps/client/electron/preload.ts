@@ -12,6 +12,7 @@ const api = {
   listModelRoutes: () => ipcRenderer.invoke("models:routes"),
   serverHealth: () => ipcRenderer.invoke("server:health"),
   setServerUrl: (url: string) => ipcRenderer.invoke("server:setUrl", url),
+  setTokens: (token: string, refreshToken?: string) => ipcRenderer.invoke("connection:setTokens", token, refreshToken),
   login: (email: string, password: string) => ipcRenderer.invoke("auth:login", email, password),
   listModels: () => ipcRenderer.invoke("models:list"),
   usageSummary: () => ipcRenderer.invoke("usage:summary"),

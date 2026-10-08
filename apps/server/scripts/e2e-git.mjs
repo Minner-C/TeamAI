@@ -1,5 +1,6 @@
 import { spawn, execFileSync } from "node:child_process";
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +12,26 @@ const PORT = await new Promise((resolve) => {
     s.close(() => resolve(p));
   });
 });
+const HOOK_PORT = await new Promise((resolve) => {
+  const s = http.createServer();
+  s.listen(0, () => {
+    const p = s.address().port;
+    s.close(() => resolve(p));
+  });
+});
 const BASE = `http://localhost:${PORT}`;
+
+const hookEvents = [];
+const hookReceiver = http.createServer((req, res) => {
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => {
+    hookEvents.push({ headers: req.headers, body: body ? JSON.parse(body) : null, raw: body });
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"received":true}');
+  });
+});
+await new Promise((r) => hookReceiver.listen(HOOK_PORT, r));
 
 let failed = 0;
 function check(name, cond, extra) {
@@ -55,6 +75,33 @@ try {
     body: JSON.stringify({ name: "demo", group: "team" }),
   });
   check("创建仓库 team/demo", create.status === 201, await create.clone().text());
+  const repoId = (await create.json()).id;
+
+  const badHook = await fetch(`${BASE}/api/repos/${repoId}/webhooks`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ url: "not-a-url" }),
+  });
+  check("非法 webhook URL 被拒绝", badHook.status === 400);
+
+  const hookRes = await fetch(`${BASE}/api/repos/${repoId}/webhooks`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ url: `http://localhost:${HOOK_PORT}/ci`, secret: "whsec" }),
+  });
+  check("添加仓库 webhook", hookRes.status === 201, await hookRes.clone().text());
+  const hookId = (await hookRes.json()).id;
+
+  const hookList = await (await fetch(`${BASE}/api/repos/${repoId}/webhooks`, { headers: authH })).json();
+  check("webhook 列表 1 条且不泄露 secret", hookList.webhooks.length === 1 && hookList.webhooks[0].hasSecret === true && !("secret" in hookList.webhooks[0]));
+
+  const pingRes = await (
+    await fetch(`${BASE}/api/repos/${repoId}/webhooks/${hookId}/test`, { method: "POST", headers: authH })
+  ).json();
+  check("webhook 测试 ping 投递成功", pingRes.ok === true && pingRes.status === 200, JSON.stringify(pingRes));
+  await new Promise((r) => setTimeout(r, 300));
+  const ping = hookEvents.find((e) => e.body?.event === "ping");
+  check("接收端拿到 ping 事件", !!ping && ping.body.repo.name === "demo");
 
   const dup = await fetch(`${BASE}/api/repos`, {
     method: "POST",
@@ -90,8 +137,27 @@ try {
   }
   check("git push 到服务端", pushOk, pushErr);
 
+  let pushEvent = null;
+  for (let i = 0; i < 25 && !pushEvent; i++) {
+    pushEvent = hookEvents.find((e) => e.body?.event === "push");
+    if (!pushEvent) await new Promise((r) => setTimeout(r, 200));
+  }
+  check("push 触发 webhook 事件", !!pushEvent && pushEvent.body.repo.name === "demo" && pushEvent.body.repo.group === "team", JSON.stringify(hookEvents.map((e) => e.body?.event)));
+  check(
+    "push 事件包含推送人信息",
+    pushEvent?.body?.pusher?.email === "admin@teamai.local",
+    JSON.stringify(pushEvent?.body),
+  );
+  const expectSig = pushEvent
+    ? `sha256=${crypto.createHmac("sha256", "whsec").update(pushEvent.raw).digest("hex")}`
+    : "";
+  check(
+    "HMAC 签名校验通过（secret=whsec）",
+    !!pushEvent && pushEvent.headers["x-teamai-signature"] === expectSig,
+    `got=${pushEvent?.headers?.["x-teamai-signature"]}`,
+  );
+
   const commits = await (await fetch(`${BASE}/api/repos`, { headers: authH })).json();
-  const repoId = commits.repos[0].id;
   const log = await (await fetch(`${BASE}/api/repos/${repoId}/commits`, { headers: authH })).json();
   check(
     "提交历史 API 读到刚才的 commit",
@@ -153,12 +219,28 @@ try {
   }
   check("无凭证 clone 被拒绝", noAuthOk);
 
+  const delHook = await fetch(`${BASE}/api/repos/${repoId}/webhooks/${hookId}`, { method: "DELETE", headers: authH });
+  check("删除 webhook", delHook.status === 200);
+  const eventCountBefore = hookEvents.length;
+  try {
+    execFileSync("git", ["-C", workDir, "checkout", "main"], { stdio: "pipe" });
+  } catch {
+    execFileSync("git", ["-C", workDir, "checkout", "-b", "main", "origin/main"], { stdio: "pipe" });
+  }
+  fs.writeFileSync(path.join(workDir, "after-hook-delete.md"), "# no hook\n");
+  execFileSync("git", ["-C", workDir, "add", "."], { stdio: "pipe" });
+  execFileSync("git", ["-C", workDir, "-c", "user.email=t@t.t", "-c", "user.name=t", "commit", "-m", "after hook delete"], { stdio: "pipe" });
+  execFileSync("git", ["-C", workDir, "push", "origin", "main"], { stdio: "pipe" });
+  await new Promise((r) => setTimeout(r, 1000));
+  check("webhook 删除后 push 不再触发事件", hookEvents.length === eventCountBefore, `before=${eventCountBefore} now=${hookEvents.length}`);
+
   const del = await fetch(`${BASE}/api/repos/${repoId}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
   check("删除仓库", del.status === 200 && !fs.existsSync(path.join(dataDir, "repos", "team", "demo.git")));
 
   console.log(failed === 0 ? "\nALL GIT E2E TESTS PASSED" : `\n${failed} TEST(S) FAILED`);
 } finally {
   server.kill();
+  hookReceiver.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
 }
 

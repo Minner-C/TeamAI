@@ -14,8 +14,8 @@ import {
   Typography,
   message,
 } from "antd";
-import { CopyOutlined, CloudDownloadOutlined } from "@ant-design/icons";
-import { api, type RepoView } from "../api";
+import { CopyOutlined, CloudDownloadOutlined, ApiOutlined } from "@ant-design/icons";
+import { api, type RepoView, type WebhookView } from "../api";
 import { useAppStore } from "../store/appStore";
 
 interface Commit {
@@ -34,6 +34,11 @@ export default function ReposPage() {
   const [commitsRepoId, setCommitsRepoId] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
   const [branch, setBranch] = useState("");
+  const [hooksRepo, setHooksRepo] = useState<RepoView | null>(null);
+  const [hooks, setHooks] = useState<WebhookView[]>([]);
+  const [hookUrl, setHookUrl] = useState("");
+  const [hookSecret, setHookSecret] = useState("");
+  const [hookBusy, setHookBusy] = useState(false);
   const [form] = Form.useForm();
 
   const refresh = useCallback(() => {
@@ -90,6 +95,49 @@ export default function ReposPage() {
     }
   }
 
+  async function openHooks(repo: RepoView) {
+    setHooksRepo(repo);
+    setHookUrl("");
+    setHookSecret("");
+    try {
+      setHooks(await api.listWebhooks(repo.id));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "加载 Webhook 失败");
+    }
+  }
+
+  async function reloadHooks() {
+    if (!hooksRepo) return;
+    setHooks(await api.listWebhooks(hooksRepo.id));
+  }
+
+  async function onAddHook() {
+    if (!hooksRepo || !hookUrl.trim()) return;
+    setHookBusy(true);
+    try {
+      await api.addWebhook(hooksRepo.id, hookUrl.trim(), hookSecret.trim() || undefined);
+      message.success("Webhook 已添加");
+      setHookUrl("");
+      setHookSecret("");
+      await reloadHooks();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "添加失败");
+    } finally {
+      setHookBusy(false);
+    }
+  }
+
+  async function onTestHook(webhookId: string) {
+    if (!hooksRepo) return;
+    try {
+      const r = await api.testWebhook(hooksRepo.id, webhookId);
+      if (r.ok) message.success(`投递成功（HTTP ${r.status}）`);
+      else message.warning(`投递失败：${r.error ?? `HTTP ${r.status}`}`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "测试失败");
+    }
+  }
+
   return (
     <div className="page-card">
       <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
@@ -129,6 +177,11 @@ export default function ReposPage() {
                 <Button size="small" onClick={() => showCommits(r)}>
                   提交历史
                 </Button>
+                {(r.ownerId === user?.id || user?.role === "admin") && (
+                  <Button size="small" icon={<ApiOutlined />} onClick={() => void openHooks(r)}>
+                    Webhook
+                  </Button>
+                )}
                 <Button
                   size="small"
                   icon={api.isElectron ? <CloudDownloadOutlined /> : <CopyOutlined />}
@@ -213,6 +266,60 @@ export default function ReposPage() {
           }))}
         />
       </Drawer>
+
+      <Modal
+        title={hooksRepo ? `${hooksRepo.group}/${hooksRepo.name} · Webhook` : "Webhook"}
+        open={hooksRepo !== null}
+        onCancel={() => setHooksRepo(null)}
+        footer={null}
+        width={560}
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          push 到该仓库时，会向以下地址 POST JSON 事件（event=push，含仓库与推送人信息）；配置 secret 后请求头附带
+          X-TeamAI-Signature（HMAC-SHA256）用于验签。
+        </Typography.Paragraph>
+        <Space direction="vertical" style={{ width: "100%" }} size={12}>
+          {hooks.length === 0 && <Tag>尚未配置 Webhook</Tag>}
+          {hooks.map((h) => (
+            <Space key={h.id} style={{ width: "100%", justifyContent: "space-between" }}>
+              <Space>
+                <Typography.Text code style={{ fontSize: 12 }}>{h.url}</Typography.Text>
+                {h.hasSecret && <Tag color="blue">已验签</Tag>}
+              </Space>
+              <Space>
+                <Button size="small" onClick={() => void onTestHook(h.id)}>
+                  测试
+                </Button>
+                <Popconfirm
+                  title="删除该 Webhook？"
+                  onConfirm={() =>
+                    api
+                      .deleteWebhook(hooksRepo!.id, h.id)
+                      .then(reloadHooks)
+                      .catch((err) => message.error(err instanceof Error ? err.message : "删除失败"))
+                  }
+                >
+                  <Button size="small" danger>
+                    删除
+                  </Button>
+                </Popconfirm>
+              </Space>
+            </Space>
+          ))}
+          <Space.Compact style={{ width: "100%" }}>
+            <Input placeholder="https://ci.example.com/hook" value={hookUrl} onChange={(e) => setHookUrl(e.target.value)} />
+            <Input.Password
+              placeholder="secret（可选，用于 HMAC 验签）"
+              style={{ width: 220 }}
+              value={hookSecret}
+              onChange={(e) => setHookSecret(e.target.value)}
+            />
+            <Button type="primary" loading={hookBusy} disabled={!hookUrl.trim()} onClick={() => void onAddHook()}>
+              添加
+            </Button>
+          </Space.Compact>
+        </Space>
+      </Modal>
     </div>
   );
 }

@@ -113,8 +113,41 @@ try {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: "admin@teamai.local", password: "test-admin-pw" }),
   });
-  const { token, user } = await login.json();
+  const { token, user, refreshToken } = await login.json();
   check("管理员登录签发 token", login.status === 200 && !!token && user.role === "admin");
+  check("登录同时签发 refreshToken", !!refreshToken);
+
+  const refreshRes = await fetch(`${BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+  const refreshData = await refreshRes.json();
+  check(
+    "refresh 换发新 access + refresh（轮转）",
+    refreshRes.status === 200 && !!refreshData.token && !!refreshData.refreshToken && refreshData.refreshToken !== refreshToken,
+  );
+  const reuseOld = await fetch(`${BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+  check("旧 refreshToken 轮转后失效", reuseOld.status === 401);
+  const newTokenWorks = await fetch(`${BASE}/api/usage/summary`, {
+    headers: { authorization: `Bearer ${refreshData.token}` },
+  });
+  check("新 access token 可直接使用", newTokenWorks.status === 200);
+  await fetch(`${BASE}/api/auth/logout`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refreshToken: refreshData.refreshToken }),
+  });
+  const afterLogout = await fetch(`${BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refreshToken: refreshData.refreshToken }),
+  });
+  check("logout 后 refreshToken 被吊销", afterLogout.status === 401);
 
   const authH = { "content-type": "application/json", authorization: `Bearer ${token}` };
 

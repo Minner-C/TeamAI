@@ -71,3 +71,11 @@ export function decryptText(enc: string, secret: string): string {
 export function generateVirtualKey(): string {
   return `tk-${b64u(crypto.randomBytes(24))}`;
 }
+
+export function generateRefreshToken(): string {
+  return `tr-${b64u(crypto.randomBytes(32))}`;
+}
+
+export function sha256Hex(text: string): string {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}

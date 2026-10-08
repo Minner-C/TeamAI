@@ -223,7 +223,16 @@ export default function ImPage() {
     void refreshChannels();
     api.orgTree().then((o) => { setOrgDepts(o.departments); setOrgUsers(o.users); }).catch(() => {});
     api.listModels().then(setModels).catch(() => {});
-    const off = api.connectIm((ev) => {
+    let off: (() => void) | null = null;
+    const connect = () => {
+      off?.();
+      off = api.connectIm((ev) => {
+      if (ev.type === "error" && /token|auth/i.test(ev.reason ?? "")) {
+        void api.refreshAccessToken().then((ok) => {
+          if (ok) connect();
+        });
+        return;
+      }
       if (ev.type === "auth:ok") {
         void refreshChannels();
         const cid = activeRef.current;
@@ -280,7 +289,9 @@ export default function ImPage() {
         }, 3600);
       }
     });
-    return off;
+    };
+    connect();
+    return () => off?.();
   }, [refreshChannels, user?.id]);
 
   useEffect(() => {

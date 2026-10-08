@@ -17,6 +17,14 @@ export interface RepoView {
   createdAt: number;
 }
 
+export interface WebhookView {
+  id: string;
+  url: string;
+  hasSecret: boolean;
+  enabled: boolean;
+  createdAt: number;
+}
+
 export interface IdeNode {
   name: string;
   path: string;
@@ -177,21 +185,56 @@ export interface FileView extends FileInfo {
 const isElectron = typeof window !== "undefined" && !!window.teamai;
 
 let directToken = localStorage.getItem("teamai_token") ?? "";
+let refreshToken = localStorage.getItem("teamai_refresh") ?? "";
 let imSocket: WebSocket | null = null;
 let directBaseUrl = isElectron ? (localStorage.getItem("teamai_server_url") ?? "") : "";
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (!refreshToken) return false;
+  refreshInFlight ??= (async () => {
+    try {
+      const res = await fetch(`${directBaseUrl}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { token: string; refreshToken: string; user: SessionUser };
+      directToken = data.token;
+      refreshToken = data.refreshToken;
+      localStorage.setItem("teamai_token", data.token);
+      localStorage.setItem("teamai_refresh", data.refreshToken);
+      localStorage.setItem("teamai_user", JSON.stringify(data.user));
+      if (isElectron) void window.teamai.setTokens(data.token, data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
 
 type ChunkHandler = (chunk: ChatChunk) => void;
 const chunkHandlers = new Set<ChunkHandler>();
 
 async function directFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${directBaseUrl}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${directToken}`,
-      ...(init?.headers ?? {}),
-    },
-  });
+  const doFetch = () =>
+    fetch(`${directBaseUrl}${path}`, {
+      ...init,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${directToken}`,
+        ...(init?.headers ?? {}),
+      },
+    });
+  let res = await doFetch();
+  if (res.status === 401 && refreshToken && !path.startsWith("/api/auth/")) {
+    if (await tryRefresh()) res = await doFetch();
+  }
+  return res;
 }
 
 export const api = {
@@ -214,10 +257,14 @@ export const api = {
     }
   },
 
-  async login(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
+  async login(email: string, password: string): Promise<{ token: string; refreshToken?: string; user: SessionUser }> {
     if (isElectron) {
       const data = await window.teamai.login(email, password);
       directToken = data.token;
+      if (data.refreshToken) {
+        refreshToken = data.refreshToken;
+        localStorage.setItem("teamai_refresh", data.refreshToken);
+      }
       localStorage.setItem("teamai_token", data.token);
       localStorage.setItem("teamai_user", JSON.stringify(data.user));
       return data;
@@ -231,11 +278,19 @@ export const api = {
       const err = (await res.json().catch(() => null)) as { error?: string } | null;
       throw new Error(err?.error ?? `登录失败：${res.status}`);
     }
-    const data = (await res.json()) as { token: string; user: SessionUser };
+    const data = (await res.json()) as { token: string; refreshToken?: string; user: SessionUser };
     directToken = data.token;
+    if (data.refreshToken) {
+      refreshToken = data.refreshToken;
+      localStorage.setItem("teamai_refresh", data.refreshToken);
+    }
     localStorage.setItem("teamai_token", data.token);
     localStorage.setItem("teamai_user", JSON.stringify(data.user));
     return data;
+  },
+
+  refreshAccessToken(): Promise<boolean> {
+    return tryRefresh();
   },
 
   restoreSession(): { token: string; user: SessionUser } | null {
@@ -251,8 +306,17 @@ export const api = {
   },
 
   clearSession(): void {
+    if (refreshToken) {
+      fetch(`${directBaseUrl}/api/auth/logout`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      }).catch(() => undefined);
+    }
     directToken = "";
+    refreshToken = "";
     localStorage.removeItem("teamai_token");
+    localStorage.removeItem("teamai_refresh");
     localStorage.removeItem("teamai_user");
   },
 
@@ -348,6 +412,34 @@ export const api = {
     u.password = encodeURIComponent(directToken);
     u.pathname = `/git/${group}/${name}.git`;
     return Promise.resolve(u.toString());
+  },
+
+  async listWebhooks(repoId: string): Promise<WebhookView[]> {
+    const res = await directFetch(`/api/repos/${repoId}/webhooks`);
+    if (!res.ok) throw new Error(`获取 Webhook 失败：${res.status}`);
+    return ((await res.json()) as { webhooks: WebhookView[] }).webhooks;
+  },
+
+  async addWebhook(repoId: string, url: string, secret?: string): Promise<void> {
+    const res = await directFetch(`/api/repos/${repoId}/webhooks`, {
+      method: "POST",
+      body: JSON.stringify({ url, secret }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(err?.error ?? `添加失败：${res.status}`);
+    }
+  },
+
+  async deleteWebhook(repoId: string, webhookId: string): Promise<void> {
+    const res = await directFetch(`/api/repos/${repoId}/webhooks/${webhookId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`删除失败：${res.status}`);
+  },
+
+  async testWebhook(repoId: string, webhookId: string): Promise<{ ok: boolean; status?: number; response?: string; error?: string }> {
+    const res = await directFetch(`/api/repos/${repoId}/webhooks/${webhookId}/test`, { method: "POST" });
+    if (!res.ok) throw new Error(`测试失败：${res.status}`);
+    return res.json() as Promise<{ ok: boolean; status?: number; response?: string; error?: string }>;
   },
 
   async pickDir(): Promise<string | null> {
@@ -662,8 +754,8 @@ export const api = {
     return () => {};
   },
 
-  async listSessions(): Promise<SessionView[]> {
-    const res = await directFetch("/api/sessions");
+  async listSessions(q?: string): Promise<SessionView[]> {
+    const res = await directFetch(`/api/sessions${q ? `?q=${encodeURIComponent(q)}` : ""}`);
     if (!res.ok) throw new Error(`获取会话存档失败：${res.status}`);
     return ((await res.json()) as { sessions: SessionView[] }).sessions;
   },
