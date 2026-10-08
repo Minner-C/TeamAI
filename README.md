@@ -28,9 +28,14 @@ pnpm dev:client   # 客户端（vite + electron 开发模式）
 
 pnpm typecheck    # 全仓类型检查
 pnpm build        # 全仓构建
-pnpm --filter @teamai/server test:e2e       # 网关/认证/用量端到端测试（15 项）
-pnpm --filter @teamai/server test:e2e:git   # Git 托管端到端测试（9 项，含真实 clone/push）
-pnpm --filter @teamai/server test:e2e:im    # IM 端到端测试（15 项，含 WS 广播与 AI 角色）
+pnpm --filter @teamai/server test:e2e        # 网关/认证/refresh token/配额端到端（31 项）
+pnpm --filter @teamai/server test:e2e:pool   # 网关 Key 池轮询/熔断/降级/成本（16 项）
+pnpm --filter @teamai/server test:e2e:im     # IM 端到端（32 项，含 WS 广播/presence/AI 角色）
+pnpm --filter @teamai/server test:e2e:git    # Git 托管（23 项，含真实 clone/push/Webhook 验签）
+pnpm --filter @teamai/server test:e2e:repos  # 仓库成员权限隔离（25 项）
+pnpm --filter @teamai/server test:e2e:envs   # 在线环境 + Web 终端（26 项）
+pnpm --filter @teamai/server test:e2e:files  # 文件上传/下载/隔离（19 项）
+pnpm --filter @teamai/client test:adapters   # CLI headless 适配器（29 项，mock CLI 端到端）
 ```
 
 浏览器预览模式：`pnpm dev:server` 后再起 `pnpm --filter @teamai/client exec vite`，访问 http://localhost:5173 可直接登录使用（Vite 代理转发到服务端）；Git 克隆、CLI 检测等本地能力仅在 Electron 中可用。
@@ -49,3 +54,5 @@ Git 远程地址格式：`http://<邮箱>:<token>@服务器:8787/git/<分组>/<�
 | `TEAMAI_JWT_SECRET` | dev-only | 生产必须覆盖（同时用于 Key 加密） |
 | `TEAMAI_ADMIN_EMAIL` | `admin@teamai.local` | 初始管理员邮箱 |
 | `TEAMAI_ADMIN_PASSWORD` | `admin123` | 初始管理员密码 |
+| `TEAMAI_ENV_RUNNER` | `auto` | 在线环境后端：`auto`/`process`/`docker`，无 docker 自动降级进程级 |
+| `TEAMAI_ENV_IMAGE` | `node:22-alpine` | docker 后端使用的镜像 |
