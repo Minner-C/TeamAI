@@ -46,8 +46,18 @@ if not exist node_modules (
 )
 
 rem ---- start ----
+set PORT=8787
+for /f "tokens=2 delims==" %%p in ('findstr /b "TEAMAI_PORT=" .env 2^>nul') do set PORT=%%p
+for /f "delims=" %%i in ('node -e "const os=require('os');const n=Object.values(os.networkInterfaces()).flat().find(i=>i&&i.family==='IPv4'&&!i.internal);console.log(n?n.address:'')"') do set LAN_IP=%%i
+echo.
 echo [teamai] Starting TeamAI server...
-echo [teamai] Admin console:  http://localhost:8787/admin
-echo [teamai] Health check:   http://localhost:8787/health
+echo ==========================================================
+echo   Server address (fill this into the client login page):
+echo     Local:   http://localhost:%PORT%
+if not "%LAN_IP%"=="" echo     LAN:     http://%LAN_IP%:%PORT%
+echo   Admin console:  http://localhost:%PORT%/admin
+echo   Health check:   http://localhost:%PORT%/health
+echo ==========================================================
+echo.
 call pnpm --filter @teamai/server start
 endlocal

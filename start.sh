@@ -58,8 +58,16 @@ fi
 # ---- 启动 ----
 set -a; . ./.env; set +a
 PORT=${TEAMAI_PORT:-8787}
+LAN_IP=$(node -e "const os=require('os');const n=Object.values(os.networkInterfaces()).flat().find(i=>i&&i.family==='IPv4'&&!i.internal);console.log(n?n.address:'')" 2>/dev/null)
 info "启动 TeamAI 服务端…"
-info "管理控制台： http://localhost:$PORT/admin"
-info "健康检查：   http://localhost:$PORT/health"
-info "管理员账号： ${TEAMAI_ADMIN_EMAIL:-admin@teamai.local}（密码见 .env，首次登录后请修改）"
+echo ""
+echo "  ┌──────────────────────────────────────────────────────┐"
+echo "  │  服务端地址（客户端登录页填写）：                    "
+printf '  │    本机：   http://localhost:%s\n' "$PORT"
+[ -n "$LAN_IP" ] && printf '  │    局域网： http://%s:%s\n' "$LAN_IP" "$PORT"
+printf '  │  管理控制台： http://localhost:%s/admin\n' "$PORT"
+printf '  │  健康检查：   http://localhost:%s/health\n' "$PORT"
+printf '  │  管理员账号： %s（密码见 .env，首次登录后请修改）\n' "${TEAMAI_ADMIN_EMAIL:-admin@teamai.local}"
+echo "  └──────────────────────────────────────────────────────┘"
+echo ""
 exec pnpm --filter @teamai/server start
