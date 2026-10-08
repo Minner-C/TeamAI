@@ -97,6 +97,23 @@ export function queryRecords(db: Db, q: UsageQuery & { limit: number; offset: nu
     .all(...params, q.limit, q.offset);
 }
 
+export function sumUserTokensSince(db: Db, userId: string, since: number): number {
+  const row = db
+    .prepare("SELECT COALESCE(SUM(tokens_in + tokens_out), 0) AS total FROM usage_records WHERE user_id = ? AND ts >= ?")
+    .get(userId, since) as { total: number };
+  return row.total;
+}
+
+export function startOfToday(): number {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+}
+
+export function startOfMonth(): number {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+}
+
 interface Bucket {
   tokensIn: number;
   tokensOut: number;

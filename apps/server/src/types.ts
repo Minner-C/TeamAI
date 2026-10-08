@@ -8,6 +8,10 @@ export interface UserRow {
   email: string;
   password_hash: string;
   role: UserRole;
+  title?: string;
+  department_id?: string | null;
+  quota_daily_tokens?: number | null;
+  quota_monthly_tokens?: number | null;
   created_at: number;
 }
 

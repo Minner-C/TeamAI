@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Segmented, Select, Tooltip, message } from "antd";
-import { api, type UsageDimRow, type UsageStats } from "../api";
+import { Progress, Segmented, Select, Tooltip, message } from "antd";
+import { api, type MeInfo, type UsageDimRow, type UsageStats } from "../api";
 import { useAppStore } from "../store/appStore";
 
 type RangeKey = "today" | "week" | "month" | "all";
@@ -153,7 +153,15 @@ export default function UsagePage() {
   const [members, setMembers] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [me, setMe] = useState<MeInfo | null>(null);
   const isAdmin = user?.role === "admin";
+
+  useEffect(() => {
+    api
+      .getMe()
+      .then(setMe)
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (isAdmin) {
@@ -226,6 +234,40 @@ export default function UsagePage() {
           </div>
         ))}
       </div>
+
+      {me && (me.quota.dailyTokens != null || me.quota.monthlyTokens != null) && (
+        <>
+          <div className="usage-section-title">我的配额</div>
+          <div className="usage-cards">
+            {me.quota.dailyTokens != null && (
+              <div className="usage-card">
+                <Progress
+                  type="dashboard"
+                  size={90}
+                  percent={Math.min(100, Math.round((me.quota.dailyUsed / me.quota.dailyTokens) * 100))}
+                  strokeColor={me.quota.dailyUsed >= me.quota.dailyTokens ? "#ef4444" : "#6366f1"}
+                />
+                <div className="usage-card-title">
+                  今日 {fmtTokens(me.quota.dailyUsed)} / {fmtTokens(me.quota.dailyTokens)}
+                </div>
+              </div>
+            )}
+            {me.quota.monthlyTokens != null && (
+              <div className="usage-card">
+                <Progress
+                  type="dashboard"
+                  size={90}
+                  percent={Math.min(100, Math.round((me.quota.monthlyUsed / me.quota.monthlyTokens) * 100))}
+                  strokeColor={me.quota.monthlyUsed >= me.quota.monthlyTokens ? "#ef4444" : "#22c55e"}
+                />
+                <div className="usage-card-title">
+                  本月 {fmtTokens(me.quota.monthlyUsed)} / {fmtTokens(me.quota.monthlyTokens)}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="usage-section-title">近期用量（按天）</div>
       <Heatmap byDay={stats?.byDay ?? []} />

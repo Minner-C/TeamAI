@@ -315,6 +315,80 @@ try {
   });
   check("超额配额的虚拟 Key 被限流 429", quotaRes.status === 429);
 
+  const meBefore = await (await fetch(`${BASE}/api/me`, { headers: authH })).json();
+  check(
+    "GET /me 返回配额与当日/当月用量",
+    meBefore.quota && meBefore.quota.dailyTokens === null && typeof meBefore.quota.dailyUsed === "number" && meBefore.quota.dailyUsed > 0,
+    JSON.stringify(meBefore),
+  );
+
+  const badQuota = await fetch(`${BASE}/api/admin/users/${user.id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ quotaDailyTokens: -5 }),
+  });
+  check("非法配额（负数）被拒绝 400", badQuota.status === 400);
+
+  const setDaily = await fetch(`${BASE}/api/admin/users/${user.id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ quotaDailyTokens: 1, quotaMonthlyTokens: 10 }),
+  });
+  check("管理员设置用户日/月配额", setDaily.status === 200, await setDaily.clone().text());
+
+  const jwtBlocked = await fetch(`${BASE}/v1/chat/completions`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ model: "mock-gpt", messages: [{ role: "user", content: "hi" }] }),
+  });
+  const jwtBlockedJson = await jwtBlocked.json();
+  check(
+    "JWT 网关调用触发日配额预检 429",
+    jwtBlocked.status === 429 && jwtBlockedJson.error === "daily quota exceeded",
+    JSON.stringify(jwtBlockedJson),
+  );
+
+  const vkBlocked = await fetch(`${BASE}/v1/chat/completions`, {
+    method: "POST",
+    headers: vkH,
+    body: JSON.stringify({ model: "mock-gpt", messages: [{ role: "user", content: "hi" }] }),
+  });
+  check("虚拟 Key 网关调用同样触发用户日配额 429", vkBlocked.status === 429);
+
+  await fetch(`${BASE}/api/admin/users/${user.id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ quotaDailyTokens: null, quotaMonthlyTokens: null }),
+  });
+  const afterClear = await fetch(`${BASE}/v1/chat/completions`, {
+    method: "POST",
+    headers: vkH,
+    body: JSON.stringify({ model: "mock-gpt", messages: [{ role: "user", content: "hi" }] }),
+  });
+  check("清除配额（null）后恢复调用", afterClear.status === 200);
+
+  await fetch(`${BASE}/api/admin/users/${user.id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ quotaMonthlyTokens: 1 }),
+  });
+  const monthBlocked = await fetch(`${BASE}/v1/chat/completions`, {
+    method: "POST",
+    headers: authH,
+    body: JSON.stringify({ model: "mock-gpt", messages: [{ role: "user", content: "hi" }] }),
+  });
+  const monthBlockedJson = await monthBlocked.json();
+  check(
+    "月配额单独生效 429",
+    monthBlocked.status === 429 && monthBlockedJson.error === "monthly quota exceeded",
+    JSON.stringify(monthBlockedJson),
+  );
+  await fetch(`${BASE}/api/admin/users/${user.id}`, {
+    method: "PATCH",
+    headers: authH,
+    body: JSON.stringify({ quotaMonthlyTokens: null }),
+  });
+
   const keys = await (await fetch(`${BASE}/api/keys`, { headers: authH })).json();
   const del = await fetch(`${BASE}/api/keys/${keys.keys[0].id}`, {
     method: "DELETE",

@@ -1,6 +1,31 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { verifyToken } from "./crypto.js";
 import type { UserRow, VirtualKeyRow } from "../../types.js";
+import { startOfMonth, startOfToday, sumUserTokensSince } from "../usage/store.js";
+
+export function checkUserQuota(req: FastifyRequest, reply: FastifyReply, user: UserRow): boolean {
+  if (user.quota_daily_tokens != null) {
+    const used = sumUserTokensSince(req.server.db, user.id, startOfToday());
+    if (used >= user.quota_daily_tokens) {
+      reply.code(429).send({
+        error: "daily quota exceeded",
+        message: `已达到今日用量上限（${used}/${user.quota_daily_tokens} tokens），请联系管理员调整配额`,
+      });
+      return false;
+    }
+  }
+  if (user.quota_monthly_tokens != null) {
+    const used = sumUserTokensSince(req.server.db, user.id, startOfMonth());
+    if (used >= user.quota_monthly_tokens) {
+      reply.code(429).send({
+        error: "monthly quota exceeded",
+        message: `已达到本月用量上限（${used}/${user.quota_monthly_tokens} tokens），请联系管理员调整配额`,
+      });
+      return false;
+    }
+  }
+  return true;
+}
 
 function bearer(req: FastifyRequest): string | null {
   const h = req.headers.authorization;
@@ -44,11 +69,15 @@ async function checkVirtualKey(req: FastifyRequest, reply: FastifyReply, key: st
       return reply.code(429).send({ error: "quota exceeded" });
     }
   }
+  const user = req.server.db.prepare("SELECT * FROM users WHERE id = ?").get(row.user_id) as UserRow | undefined;
+  if (user && !checkUserQuota(req, reply, user)) return;
   req.virtualKey = row;
 }
 
 export async function requireGatewayAuth(req: FastifyRequest, reply: FastifyReply) {
   const key = bearer(req);
   if (key?.startsWith("tk-")) return checkVirtualKey(req, reply, key);
-  return requireUser(req, reply);
+  await requireUser(req, reply);
+  if (reply.sent) return;
+  if (req.user && !checkUserQuota(req, reply, req.user)) return;
 }

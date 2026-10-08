@@ -666,6 +666,7 @@ async function renderOrg(c) {
 /* ---------- 成员 ---------- */
 async function renderUsers(c) {
   const { users } = await req("/api/users");
+  const fmtQuota = (v) => (v == null ? "不限" : Number(v).toLocaleString("zh-CN"));
   const rows = users.map((u) => `
     <tr>
       <td><b>${esc(u.name)}</b></td>
@@ -673,15 +674,46 @@ async function renderUsers(c) {
       <td>${esc(u.department_name || "—")}</td>
       <td>${esc(u.title || "—")}</td>
       <td><span class="tag ${u.role === "admin" ? "on" : ""}">${esc(u.role)}</span></td>
+      <td>日 ${fmtQuota(u.quota_daily_tokens)} / 月 ${fmtQuota(u.quota_monthly_tokens)}</td>
       <td>${fmtTime(u.created_at)}</td>
+      <td><button class="btn sm" data-quota="${u.id}" data-name="${esc(u.name)}" data-daily="${u.quota_daily_tokens ?? ""}" data-monthly="${u.quota_monthly_tokens ?? ""}">配额</button></td>
     </tr>`).join("");
   c.innerHTML = `
-    ${pageHead("成员", "团队成员账号，创建后即可登录客户端；部门与职位请在「组织架构」页维护")}
+    ${pageHead("成员", "团队成员账号，创建后即可登录客户端；部门与职位请在「组织架构」页维护；配额为 token 数，网关调用前预检")}
     <div class="bar"><button class="btn" id="add-user">添加成员</button></div>
     <div class="card"><h3>成员列表 <span class="sub">${users.length} 人</span></h3>
-      <table><thead><tr><th>姓名</th><th>邮箱</th><th>部门</th><th>职位</th><th>角色</th><th>加入时间</th></tr></thead>
+      <table><thead><tr><th>姓名</th><th>邮箱</th><th>部门</th><th>职位</th><th>角色</th><th>配额（日/月）</th><th>加入时间</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>`;
+  $$("[data-quota]", c).forEach((btn) => (btn.onclick = () => {
+    openModal({
+      title: `设置「${btn.dataset.name}」的用量配额`,
+      okText: "保存",
+      body:
+        field("日配额（tokens，留空不限）", `<input id="m-q-daily" type="number" min="0" placeholder="如 1000000" value="${esc(btn.dataset.daily)}" />`) +
+        field("月配额（tokens，留空不限）", `<input id="m-q-monthly" type="number" min="0" placeholder="如 20000000" value="${esc(btn.dataset.monthly)}" />`),
+      onOk: async (b) => {
+        const parse = (id) => {
+          const v = $(id, b).value.trim();
+          if (!v) return null;
+          const n = Number(v);
+          if (!Number.isInteger(n) || n < 0) throw new Error("配额必须是不小于 0 的整数");
+          return n;
+        };
+        let quotaDailyTokens, quotaMonthlyTokens;
+        try {
+          quotaDailyTokens = parse("#m-q-daily");
+          quotaMonthlyTokens = parse("#m-q-monthly");
+        } catch (e) { toast(e.message, "err"); return false; }
+        await req(`/api/admin/users/${btn.dataset.quota}`, {
+          method: "PATCH",
+          body: JSON.stringify({ quotaDailyTokens, quotaMonthlyTokens }),
+        });
+        toast("配额已保存");
+        renderTab();
+      },
+    });
+  }));
   $("#add-user").onclick = () => {
     openModal({
       title: "添加成员",

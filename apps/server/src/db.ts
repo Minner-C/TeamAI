@@ -200,6 +200,8 @@ function migrate(db: Db) {
   addColumn("ai_roles", "trigger_keywords", "trigger_keywords TEXT NOT NULL DEFAULT ''");
   addColumn("users", "department_id", "department_id TEXT");
   addColumn("users", "title", "title TEXT NOT NULL DEFAULT ''");
+  addColumn("users", "quota_daily_tokens", "quota_daily_tokens INTEGER");
+  addColumn("users", "quota_monthly_tokens", "quota_monthly_tokens INTEGER");
   addColumn("channels", "topic", "topic TEXT NOT NULL DEFAULT ''");
   addColumn("providers", "pricing_json", "pricing_json TEXT NOT NULL DEFAULT '{}'");
 

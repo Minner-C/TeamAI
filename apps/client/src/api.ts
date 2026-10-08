@@ -7,6 +7,15 @@ export interface SessionUser {
   role: string;
 }
 
+export interface MeInfo extends SessionUser {
+  quota: {
+    dailyTokens: number | null;
+    monthlyTokens: number | null;
+    dailyUsed: number;
+    monthlyUsed: number;
+  };
+}
+
 export interface RepoView {
   id: string;
   name: string;
@@ -502,6 +511,12 @@ export const api = {
     const res = await directFetch("/api/users");
     if (!res.ok) throw new Error(`获取用户列表失败：${res.status}`);
     return ((await res.json()) as { users: SessionUser[] }).users;
+  },
+
+  async getMe(): Promise<MeInfo> {
+    const res = await directFetch("/api/me");
+    if (!res.ok) throw new Error(`获取个人信息失败：${res.status}`);
+    return res.json() as Promise<MeInfo>;
   },
 
   async createUser(name: string, email: string, password: string) {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { generateRefreshToken, hashPassword, randomId, sha256Hex, verifyPassword, signToken } from "./crypto.js";
 import { requireAdmin, requireUser } from "./auth.js";
 import { recordAudit } from "../audit/store.js";
+import { startOfMonth, startOfToday, sumUserTokensSince } from "../usage/store.js";
 import type { UserRow } from "../../types.js";
 
 const ACCESS_TTL_MS = 12 * 3600 * 1000;
@@ -80,13 +81,25 @@ export async function coreRoutes(app: FastifyInstance) {
 
   app.get("/me", { preHandler: requireUser }, async (req) => {
     const u = req.user!;
-    return { id: u.id, name: u.name, email: u.email, role: u.role };
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      quota: {
+        dailyTokens: u.quota_daily_tokens ?? null,
+        monthlyTokens: u.quota_monthly_tokens ?? null,
+        dailyUsed: sumUserTokensSince(app.db, u.id, startOfToday()),
+        monthlyUsed: sumUserTokensSince(app.db, u.id, startOfMonth()),
+      },
+    };
   });
 
   app.get("/users", { preHandler: requireUser }, async () => {
     const rows = app.db
       .prepare(
         `SELECT u.id, u.name, u.email, u.role, u.title, u.department_id, u.created_at,
+                u.quota_daily_tokens, u.quota_monthly_tokens,
                 d.name AS department_name
          FROM users u LEFT JOIN departments d ON d.id = u.department_id
          ORDER BY u.created_at ASC`,
@@ -168,7 +181,14 @@ export async function coreRoutes(app: FastifyInstance) {
     const user = app.db.prepare("SELECT id FROM users WHERE id = ?").get(id);
     if (!user) return reply.code(404).send({ error: "not found" });
     const body = req.body as
-      | { name?: string; title?: string; departmentId?: string | null; role?: string }
+      | {
+          name?: string;
+          title?: string;
+          departmentId?: string | null;
+          role?: string;
+          quotaDailyTokens?: number | null;
+          quotaMonthlyTokens?: number | null;
+        }
       | undefined;
     if (body?.departmentId) {
       const d = app.db.prepare("SELECT id FROM departments WHERE id = ?").get(body.departmentId);
@@ -177,12 +197,20 @@ export async function coreRoutes(app: FastifyInstance) {
     if (body?.role !== undefined && !["admin", "member"].includes(body.role)) {
       return reply.code(400).send({ error: "role must be admin or member" });
     }
+    for (const key of ["quotaDailyTokens", "quotaMonthlyTokens"] as const) {
+      const v = body?.[key];
+      if (v !== undefined && v !== null && (!Number.isInteger(v) || v < 0)) {
+        return reply.code(400).send({ error: `${key} must be a non-negative integer or null` });
+      }
+    }
     const sets: string[] = [];
     const vals: unknown[] = [];
     if (body?.name !== undefined && body.name.trim()) { sets.push("name = ?"); vals.push(body.name.trim()); }
     if (body?.title !== undefined) { sets.push("title = ?"); vals.push(body.title); }
     if (body?.departmentId !== undefined) { sets.push("department_id = ?"); vals.push(body.departmentId); }
     if (body?.role !== undefined) { sets.push("role = ?"); vals.push(body.role); }
+    if (body?.quotaDailyTokens !== undefined) { sets.push("quota_daily_tokens = ?"); vals.push(body.quotaDailyTokens); }
+    if (body?.quotaMonthlyTokens !== undefined) { sets.push("quota_monthly_tokens = ?"); vals.push(body.quotaMonthlyTokens); }
     if (!sets.length) return reply.code(400).send({ error: "nothing to update" });
     vals.push(id);
     app.db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...(vals as string[]));
@@ -197,6 +225,7 @@ export async function coreRoutes(app: FastifyInstance) {
     return app.db
       .prepare(
         `SELECT u.id, u.name, u.email, u.role, u.title, u.department_id, u.created_at,
+                u.quota_daily_tokens, u.quota_monthly_tokens,
                 d.name AS department_name
          FROM users u LEFT JOIN departments d ON d.id = u.department_id WHERE u.id = ?`,
       )
