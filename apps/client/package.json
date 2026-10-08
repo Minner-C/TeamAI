@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "dist:win": "npm run build && electron-builder --win --x64",
     "dist:dir": "npm run build && electron-builder --dir",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "test:adapters": "node scripts/test-headless-adapters.ts"
   },
   "build": {
     "appId": "com.teamai.client",

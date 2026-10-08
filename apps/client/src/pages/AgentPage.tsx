@@ -196,7 +196,7 @@ export default function AgentPage() {
     }
     if (api.isElectron) {
       api.detectClis().then((list) => {
-        const installed = list.filter((c) => c.installed && (c.kind === "kimi" || c.kind === "claude"));
+        const installed = list.filter((c) => c.installed);
         setClis(installed);
         if (installed.length > 0) setCli(installed[0].kind);
       });

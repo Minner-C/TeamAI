@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { AcpClient } from "./acpClient.js";
 import { runClaudeHeadless, type ClaudePermissionRequest } from "./claudeAdapter.js";
+import { runCodexHeadless, runGeminiStyleHeadless, type HeadlessEvent } from "./headlessAdapters.js";
 
 export interface AgentRunEvent {
   taskId: string;
@@ -12,7 +13,7 @@ export interface AgentRunEvent {
 interface RunHandle {
   cli: string;
   acp?: AcpClient;
-  claude?: ChildProcess;
+  child?: ChildProcess;
   permissionResolvers: Map<string, (allow: boolean) => void>;
 }
 
@@ -81,7 +82,32 @@ export async function runAgentCli(
         }
       },
     );
-    handle.claude = child;
+    handle.child = child;
+    handles.set(taskId, handle);
+    return;
+  }
+
+  if (cli === "codex" || cli === "gemini" || cli === "qwen") {
+    const handle: RunHandle = { cli, permissionResolvers: new Map() };
+    const forward = (ev: HeadlessEvent) => {
+      if (ev.type === "assistant" && ev.text) {
+        onEvent({ taskId, kind: "message", text: ev.text });
+      } else if (ev.type === "thought" && ev.text) {
+        onEvent({ taskId, kind: "thought", text: ev.text });
+      } else if (ev.type === "tool" && ev.text) {
+        onEvent({ taskId, kind: "tool", text: ev.text });
+      } else if (ev.type === "error" && ev.text) {
+        onEvent({ taskId, kind: "error", text: ev.text.trim() });
+      } else if (ev.type === "exit") {
+        onEvent({ taskId, kind: "done" });
+        handles.delete(taskId);
+      }
+    };
+    const child =
+      cli === "codex"
+        ? runCodexHeadless({ prompt, cwd }, forward)
+        : runGeminiStyleHeadless(cli, { prompt, cwd }, forward);
+    handle.child = child;
     handles.set(taskId, handle);
     return;
   }
@@ -105,12 +131,12 @@ export async function stopAgentCli(taskId: string): Promise<void> {
   if (handle.cli === "kimi" && handle.acp) {
     await handle.acp.stopSession(taskId);
   }
-  handle.claude?.kill("SIGTERM");
+  handle.child?.kill("SIGTERM");
 }
 
 export function disposeAgentRunners(): void {
   for (const handle of handles.values()) {
-    handle.claude?.kill("SIGTERM");
+    handle.child?.kill("SIGTERM");
   }
   handles.clear();
   acpSingleton?.dispose();
