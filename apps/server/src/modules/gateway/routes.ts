@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ProviderRow } from "../../types.js";
-import { findProviderForModel, providerApiKey } from "./store.js";
+import { findProvidersForModel, providerApiKey } from "./store.js";
+import { pickKey, reportKeyFailure, reportKeySuccess, listProviderKeys, toKeyView, addProviderKey, deleteProviderKey, resetProviderKey } from "./keyPool.js";
+import { estimateCost, parsePricing } from "./pricing.js";
 import { insertUsage } from "../usage/store.js";
 import { recordAudit } from "../audit/store.js";
 import {
@@ -51,6 +53,7 @@ function recordUsage(
     tokensIn: usage.tokensIn,
     tokensOut: usage.tokensOut,
     estimated: usage.estimated,
+    cost: estimateCost(provider, model, usage.tokensIn, usage.tokensOut),
     cli: meta.cli,
     taskId: meta.taskId,
   });
@@ -153,6 +156,36 @@ async function proxyJson(
   return reply.send(out);
 }
 
+function isRetryableStatus(status: number): boolean {
+  return status === 401 || status === 403 || status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function sendUpstreamError(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  provider: ProviderRow,
+  url: string,
+  status: number,
+  text: string,
+  model: string,
+) {
+  req.log.warn({ provider: provider.name, url, status }, "upstream rejected request");
+  const hint =
+    status === 404
+      ? `请求地址 ${url} 不存在，请检查管理后台中 provider「${provider.name}」的 baseUrl：OpenAI 兼容接口一般填到域名或 /v1 即可（如 https://api.openai.com 或 https://api.deepseek.com/v1），不要包含 /chat/completions 之后的部分；同时确认模型名「${model}」在该平台可用`
+      : status === 401 || status === 403
+        ? `provider「${provider.name}」的 API Key 无效或没有权限，请到管理后台检查`
+        : "";
+  return reply.code(status).send({
+    error: "upstream error",
+    detail: text || hint,
+    provider: provider.name,
+    url,
+  });
+}
+
+const MAX_ATTEMPTS = 6;
+
 async function handle(
   app: FastifyInstance,
   req: FastifyRequest,
@@ -163,56 +196,90 @@ async function handle(
   const model = body?.model as string | undefined;
   if (!body || !model) return reply.code(400).send({ error: "model required" });
 
-  const provider = findProviderForModel(
+  const candidates = findProvidersForModel(
     app.db,
     model,
     requestStyle === "anthropic" ? "anthropic" : "openai-compatible",
   );
-  if (!provider) return reply.code(404).send({ error: `no enabled provider for model: ${model}` });
+  if (candidates.length === 0) return reply.code(404).send({ error: `no enabled provider for model: ${model}` });
 
-  const apiKey = providerApiKey(provider, app.config.jwtSecret);
+  let attempts = 0;
+  let upstream: Response | null = null;
+  let provider: ProviderRow | null = null;
+  let lastFailure: { status: number; text: string; provider: ProviderRow; url: string } | null = null;
+  let sawCoolingOnly = false;
+
+  outer: for (const candidate of candidates) {
+    const style = providerStyle(candidate);
+    const crossStyle = style !== requestStyle;
+    const wantStream = body.stream === true && !crossStyle;
+    const upstreamBody = crossStyle
+      ? requestStyle === "openai"
+        ? openaiToAnthropic(body)
+        : anthropicToOpenai(body)
+      : requestStyle === "openai" && wantStream
+        ? { ...body, stream_options: { include_usage: true } }
+        : body;
+    const url = upstreamUrl(candidate, style);
+
+    const exclude = new Set<string>();
+    while (attempts < MAX_ATTEMPTS) {
+      const picked = pickKey(app.db, app.config.jwtSecret, candidate.id, exclude);
+      if (!picked) {
+        if (exclude.size > 0 || candidates.length === 1) sawCoolingOnly = true;
+        break;
+      }
+      exclude.add(picked.id);
+      attempts++;
+
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: upstreamHeaders(candidate, picked.apiKey),
+          body: JSON.stringify(upstreamBody),
+        });
+      } catch (err) {
+        reportKeyFailure(app.db, picked.id);
+        req.log.warn({ provider: candidate.name, url, err }, "upstream fetch failed, trying next key");
+        lastFailure = { status: 502, text: "upstream unreachable", provider: candidate, url };
+        continue;
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        if (isRetryableStatus(res.status)) {
+          reportKeyFailure(app.db, picked.id);
+          req.log.warn(
+            { provider: candidate.name, key: picked.label || picked.id, url, status: res.status },
+            "upstream key rejected, trying next key",
+          );
+          lastFailure = { status: res.status, text, provider: candidate, url };
+          continue;
+        }
+        return sendUpstreamError(req, reply, candidate, url, res.status, text, model);
+      }
+
+      reportKeySuccess(app.db, picked.id);
+      upstream = res;
+      provider = candidate;
+      break outer;
+    }
+  }
+
+  if (!upstream || !provider) {
+    if (lastFailure) {
+      return sendUpstreamError(req, reply, lastFailure.provider, lastFailure.url, lastFailure.status, lastFailure.text, model);
+    }
+    return reply.code(503).send({
+      error: "no available upstream key",
+      detail: sawCoolingOnly ? "所有上游 Key 均在熔断冷却中，请稍后重试或在管理后台检查 Key 状态" : "provider 未配置可用 Key",
+    });
+  }
+
   const style = providerStyle(provider);
   const crossStyle = style !== requestStyle;
   const wantStream = body.stream === true && !crossStyle;
-
-  const upstreamBody = crossStyle
-    ? requestStyle === "openai"
-      ? openaiToAnthropic(body)
-      : anthropicToOpenai(body)
-    : requestStyle === "openai" && wantStream
-      ? { ...body, stream_options: { include_usage: true } }
-      : body;
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl(provider, style), {
-      method: "POST",
-      headers: upstreamHeaders(provider, apiKey),
-      body: JSON.stringify(upstreamBody),
-    });
-  } catch (err) {
-    req.log.error(err, "upstream fetch failed");
-    return reply.code(502).send({ error: "upstream unreachable" });
-  }
-
-  if (!upstream.ok) {
-    const text = await upstream.text();
-    const url = upstreamUrl(provider, style);
-    req.log.warn({ provider: provider.name, url, status: upstream.status }, "upstream rejected request");
-    const hint =
-      upstream.status === 404
-        ? `请求地址 ${url} 不存在，请检查管理后台中 provider「${provider.name}」的 baseUrl：OpenAI 兼容接口一般填到域名或 /v1 即可（如 https://api.openai.com 或 https://api.deepseek.com/v1），不要包含 /chat/completions 之后的部分；同时确认模型名「${model}」在该平台可用`
-        : upstream.status === 401 || upstream.status === 403
-          ? `provider「${provider.name}」的 API Key 无效或没有权限，请到管理后台检查`
-          : "";
-    return reply.code(upstream.status).send({
-      error: "upstream error",
-      detail: text || hint,
-      provider: provider.name,
-      url,
-    });
-  }
-
   if (wantStream) {
     return pipeStream(app, req, reply, upstream, provider, model, style);
   }
@@ -247,7 +314,7 @@ export async function gatewayRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/admin/providers", { preHandler: requireAdmin }, async () => ({
-    providers: store.listProviders(app.db).map(store.toProviderView),
+    providers: store.listProviders(app.db).map((p) => store.toProviderView(p, app.db)),
   }));
 
   app.post("/api/admin/providers", { preHandler: requireAdmin }, async (req, reply) => {
@@ -278,11 +345,14 @@ export async function gatewayRoutes(app: FastifyInstance) {
   app.patch("/api/admin/providers/:id", { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = req.body as
-      | { enabled?: boolean; models?: string[]; name?: string; type?: string; baseUrl?: string; apiKey?: string }
+      | { enabled?: boolean; models?: string[]; name?: string; type?: string; baseUrl?: string; apiKey?: string; pricing?: Record<string, { in: number; out: number }> }
       | undefined;
-    const hasProfile = !!(body?.name?.trim() || body?.type?.trim() || body?.baseUrl?.trim() || body?.apiKey);
+    const hasProfile = !!(body?.name?.trim() || body?.type?.trim() || body?.baseUrl?.trim() || body?.apiKey || body?.pricing);
     if (!body || (body.enabled == null && !body.models && !hasProfile)) {
       return reply.code(400).send({ error: "enabled, models or profile fields required" });
+    }
+    if (body.pricing && Object.keys(parsePricing(JSON.stringify(body.pricing))).length !== Object.keys(body.pricing).length) {
+      return reply.code(400).send({ error: "pricing 格式应为 { 模型名: { in: 每百万输入token美元价, out: 每百万输出token美元价 } }" });
     }
     const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
     if (!row) return reply.code(404).send({ error: "provider not found" });
@@ -292,6 +362,7 @@ export async function gatewayRoutes(app: FastifyInstance) {
       baseUrl: body.baseUrl,
       apiKey: body.apiKey,
       models: body.models,
+      pricing: body.pricing,
     });
     if (body.enabled != null) store.setProviderEnabled(app.db, id, body.enabled);
     const changes = [
@@ -311,7 +382,7 @@ export async function gatewayRoutes(app: FastifyInstance) {
       ip: req.ip,
     });
     const finalRow = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as unknown as ProviderRow;
-    return store.toProviderView(finalRow) ?? view;
+    return store.toProviderView(finalRow, app.db) ?? view;
   });
 
   app.post("/api/admin/providers/:id/test", { preHandler: requireAdmin }, async (req, reply) => {
@@ -319,7 +390,8 @@ export async function gatewayRoutes(app: FastifyInstance) {
     const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
     if (!row) return reply.code(404).send({ error: "provider not found" });
     const url = modelsUrl(row);
-    const apiKey = providerApiKey(row, app.config.jwtSecret);
+    const picked = pickKey(app.db, app.config.jwtSecret, row.id, new Set());
+    const apiKey = picked?.apiKey ?? providerApiKey(row, app.config.jwtSecret);
     const started = Date.now();
     try {
       const res = await fetch(url, {
@@ -358,6 +430,52 @@ export async function gatewayRoutes(app: FastifyInstance) {
       target: id,
       ip: req.ip,
     });
+    return { ok: true };
+  });
+
+  app.get("/api/admin/providers/:id/keys", { preHandler: requireAdmin }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = app.db.prepare("SELECT id FROM providers WHERE id = ?").get(id);
+    if (!row) return reply.code(404).send({ error: "provider not found" });
+    return { keys: listProviderKeys(app.db, id).map((k) => toKeyView(k, app.config.jwtSecret)) };
+  });
+
+  app.post("/api/admin/providers/:id/keys", { preHandler: requireAdmin }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { apiKey?: string; label?: string } | undefined;
+    if (!body?.apiKey) return reply.code(400).send({ error: "apiKey required" });
+    const row = app.db.prepare("SELECT * FROM providers WHERE id = ?").get(id) as ProviderRow | undefined;
+    if (!row) return reply.code(404).send({ error: "provider not found" });
+    const key = addProviderKey(app.db, app.config.jwtSecret, id, body.apiKey, body.label);
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "provider.key_add",
+      target: row.name,
+      detail: body.label?.trim() || undefined,
+      ip: req.ip,
+    });
+    return reply.code(201).send(toKeyView(key, app.config.jwtSecret));
+  });
+
+  app.delete("/api/admin/providers/:id/keys/:keyId", { preHandler: requireAdmin }, async (req, reply) => {
+    const { keyId } = req.params as { id: string; keyId: string };
+    const result = deleteProviderKey(app.db, keyId);
+    if (result === "not-found") return reply.code(404).send({ error: "key not found" });
+    if (result === "last-key") return reply.code(400).send({ error: "provider 至少保留一个 Key" });
+    recordAudit(app.db, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      action: "provider.key_remove",
+      target: keyId,
+      ip: req.ip,
+    });
+    return { ok: true };
+  });
+
+  app.post("/api/admin/providers/:id/keys/:keyId/reset", { preHandler: requireAdmin }, async (req, reply) => {
+    const { keyId } = req.params as { id: string; keyId: string };
+    if (!resetProviderKey(app.db, keyId)) return reply.code(404).send({ error: "key not found" });
     return { ok: true };
   });
 

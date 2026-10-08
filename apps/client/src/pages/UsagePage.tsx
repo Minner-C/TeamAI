@@ -13,6 +13,12 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
+function fmtCost(n: number): string {
+  if (!n) return "$0";
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
 function rangeFrom(key: RangeKey): number | undefined {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -175,6 +181,7 @@ export default function UsagePage() {
       title: "输入 / 输出",
       value: `${fmtTokens(stats?.range.tokensIn ?? 0)} / ${fmtTokens(stats?.range.tokensOut ?? 0)}`,
     },
+    { title: "估算成本（所选范围）", value: fmtCost(stats?.range.cost ?? 0) },
   ];
 
   return (

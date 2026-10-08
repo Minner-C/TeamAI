@@ -18,6 +18,7 @@ export interface ProviderRow {
   base_url: string;
   key_enc: string;
   models_json: string;
+  pricing_json: string;
   enabled: number;
   created_at: number;
 }
@@ -29,6 +30,17 @@ export interface VirtualKeyRow {
   name: string;
   quota_tokens: number | null;
   revoked_at: number | null;
+  created_at: number;
+}
+
+export interface ProviderKeyRow {
+  id: string;
+  provider_id: string;
+  label: string;
+  key_enc: string;
+  fail_count: number;
+  cooldown_until: number | null;
+  last_used_at: number | null;
   created_at: number;
 }
 

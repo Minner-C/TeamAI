@@ -8,6 +8,7 @@ export interface UsageInput {
   tokensIn: number;
   tokensOut: number;
   estimated: boolean;
+  cost?: number;
   cli?: string | null;
   taskId?: string | null;
 }
@@ -15,7 +16,7 @@ export interface UsageInput {
 export function insertUsage(db: Db, input: UsageInput): void {
   db.prepare(
     `INSERT INTO usage_records (id, user_id, model, provider_id, tokens_in, tokens_out, cost, estimated, cli, task_id, ts)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     randomId(),
     input.userId,
@@ -23,6 +24,7 @@ export function insertUsage(db: Db, input: UsageInput): void {
     input.providerId,
     input.tokensIn,
     input.tokensOut,
+    input.cost ?? 0,
     input.estimated ? 1 : 0,
     input.cli ?? null,
     input.taskId ?? null,

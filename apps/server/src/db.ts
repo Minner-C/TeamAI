@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS providers (
   base_url TEXT NOT NULL,
   key_enc TEXT NOT NULL,
   models_json TEXT NOT NULL DEFAULT '[]',
+  pricing_json TEXT NOT NULL DEFAULT '{}',
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL
 );
@@ -149,6 +150,17 @@ CREATE TABLE IF NOT EXISTS departments (
   sort INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS provider_keys (
+  id TEXT PRIMARY KEY,
+  provider_id TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  key_enc TEXT NOT NULL,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  cooldown_until INTEGER,
+  last_used_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_provider_keys_provider ON provider_keys(provider_id);
 `;
 
 export function openDb(config: ServerConfig): Db {
@@ -171,6 +183,17 @@ function migrate(db: Db) {
   addColumn("users", "department_id", "department_id TEXT");
   addColumn("users", "title", "title TEXT NOT NULL DEFAULT ''");
   addColumn("channels", "topic", "topic TEXT NOT NULL DEFAULT ''");
+  addColumn("providers", "pricing_json", "pricing_json TEXT NOT NULL DEFAULT '{}'");
+
+  const providers = db.prepare("SELECT id, key_enc FROM providers").all() as unknown as { id: string; key_enc: string }[];
+  const countStmt = db.prepare("SELECT COUNT(*) AS n FROM provider_keys WHERE provider_id = ?");
+  const insertStmt = db.prepare(
+    "INSERT INTO provider_keys (id, provider_id, label, key_enc, created_at) VALUES (?, ?, '默认', ?, ?)",
+  );
+  for (const p of providers) {
+    const { n } = countStmt.get(p.id) as unknown as { n: number };
+    if (n === 0 && p.key_enc) insertStmt.run(randomId(), p.id, p.key_enc, Date.now());
+  }
 }
 
 function seedAdmin(db: Db) {

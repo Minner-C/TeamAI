@@ -10,6 +10,9 @@
     "test:e2e:git": "node scripts/e2e-git.mjs",
     "test:e2e:repos": "node scripts/e2e-repos.mjs",
     "test:e2e:im": "node scripts/e2e-im.mjs",
+    "test:e2e:envs": "node scripts/e2e-envs.mjs",
+    "test:e2e:files": "node scripts/e2e-files.mjs",
+    "test:e2e:pool": "node scripts/e2e-gateway-pool.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
