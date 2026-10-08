@@ -87,6 +87,8 @@ export function runClaudeHeadless(
 
   if (opts.interactive) {
     child.once("spawn", () => sendUserMessage(child, opts.prompt));
+  } else {
+    child.once("spawn", () => child.stdin.end());
   }
 
   const rl = readline.createInterface({ input: child.stdout });

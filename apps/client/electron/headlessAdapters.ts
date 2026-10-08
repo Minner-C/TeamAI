@@ -15,11 +15,13 @@ export interface HeadlessOptions {
 }
 
 function spawnCli(command: string, args: string[], opts: HeadlessOptions): ChildProcessWithoutNullStreams {
-  return spawn(command, args, {
+  const child = spawn(command, args, {
     cwd: opts.cwd,
     env: { ...process.env, ...opts.env },
     shell: process.platform === "win32",
   });
+  child.stdin.end();
+  return child;
 }
 
 function watchSpawnError(child: ChildProcessWithoutNullStreams, onEvent: (ev: HeadlessEvent) => void): void {
@@ -28,16 +30,16 @@ function watchSpawnError(child: ChildProcessWithoutNullStreams, onEvent: (ev: He
   });
 }
 
-function bufferStderr(child: ChildProcessWithoutNullStreams): () => string {
+function bufferStderr(child: ChildProcessWithoutNullStreams, limit = 800): () => string {
   let tail = "";
   child.stderr.on("data", (chunk: Buffer) => {
-    tail = (tail + chunk.toString("utf8")).slice(-800);
+    tail = (tail + chunk.toString("utf8")).slice(-limit);
   });
   return () => tail.trim();
 }
 
 export function codexArgs(prompt: string): string[] {
-  return ["exec", "--json", "--full-auto", "--skip-git-repo-check", prompt];
+  return ["exec", "--json", "--skip-git-repo-check", "-s", "workspace-write", prompt];
 }
 
 interface CodexItem {
@@ -47,6 +49,7 @@ interface CodexItem {
   text?: string;
   command?: string;
   status?: string;
+  message?: string;
   changes?: Array<{ path?: string; kind?: string }>;
 }
 
@@ -63,12 +66,20 @@ export function parseCodexLine(line: string): HeadlessEvent | null {
     const msg =
       (raw.message as string | undefined) ??
       ((raw.error as { message?: string } | undefined)?.message || line.slice(0, 300));
+    if (type === "error" && /^reconnecting/i.test(msg)) {
+      return { raw, type: "stderr", text: msg };
+    }
     return { raw, type: "error", text: msg };
   }
 
   if (type === "item.completed" || type === "item.started") {
     const item = (raw.item ?? {}) as CodexItem;
     const itemType = item.type ?? item.item_type ?? "";
+    if (itemType === "error") {
+      return type === "item.completed" && item.message
+        ? { raw, type: "error", text: item.message }
+        : null;
+    }
     if (type === "item.started" && itemType !== "command_execution") return null;
     switch (itemType) {
       case "agent_message":
@@ -121,7 +132,8 @@ export function runCodexHeadless(
   return child;
 }
 
-export function geminiArgs(prompt: string): string[] {
+export function geminiStyleArgs(cli: "gemini" | "qwen", prompt: string): string[] {
+  if (cli === "qwen") return [prompt, "--output-format", "json", "--yolo"];
   return ["-p", prompt, "--output-format", "json", "--yolo"];
 }
 
@@ -148,14 +160,73 @@ export function parseGeminiOutput(stdout: string): GeminiStyleResult {
   }
 }
 
+export function parseQwenOutput(stdout: string): GeminiStyleResult {
+  const trimmed = stdout.trim();
+  if (!trimmed) return { error: "CLI 没有输出" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { response: trimmed };
+  }
+  const items = (Array.isArray(parsed) ? parsed : [parsed]) as Array<Record<string, unknown>>;
+  const errOf = (obj: Record<string, unknown>): string | null => {
+    const err = obj.error;
+    if (typeof err === "string") return err;
+    if (err && typeof err === "object") {
+      const msg = (err as { message?: string }).message;
+      return typeof msg === "string" ? msg : JSON.stringify(err);
+    }
+    return null;
+  };
+  const result = [...items].reverse().find((it) => it && typeof it === "object" && it.type === "result");
+  if (result) {
+    const err = errOf(result);
+    if (err || result.is_error === true) return { error: err ?? "qwen 执行失败" };
+    if (typeof result.result === "string" && result.result.trim()) return { response: result.result };
+  }
+  for (const obj of [...items].reverse()) {
+    if (!obj || typeof obj !== "object") continue;
+    const err = errOf(obj);
+    if (err) return { error: err };
+    if (typeof obj.response === "string") return { response: obj.response };
+    if (typeof obj.result === "string" && obj.result.trim()) return { response: obj.result };
+    if (obj.type === "assistant") {
+      const content = (obj.message as { content?: Array<{ type?: string; text?: string }> } | undefined)?.content;
+      if (Array.isArray(content)) {
+        const text = content.filter((c) => c?.type === "text").map((c) => c.text ?? "").join("");
+        if (text.trim()) return { response: text };
+      }
+    }
+  }
+  return { response: trimmed };
+}
+
+function extractStderrJsonError(tail: string): string | null {
+  const start = tail.indexOf("{");
+  if (start < 0) return null;
+  try {
+    const parsed = JSON.parse(tail.slice(start)) as { error?: unknown };
+    const err = parsed?.error;
+    if (typeof err === "string") return err;
+    if (err && typeof err === "object") {
+      const msg = (err as { message?: string }).message;
+      if (typeof msg === "string") return msg;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function runGeminiStyleHeadless(
   cli: "gemini" | "qwen",
   opts: HeadlessOptions,
   onEvent: (ev: HeadlessEvent) => void,
 ): ChildProcess {
-  const child = spawnCli(opts.command ?? cli, geminiArgs(opts.prompt), opts);
+  const child = spawnCli(opts.command ?? cli, geminiStyleArgs(cli, opts.prompt), opts);
   watchSpawnError(child, onEvent);
-  const stderrTail = bufferStderr(child);
+  const stderrTail = bufferStderr(child, 4000);
 
   let buf = "";
   child.stdout.on("data", (chunk: Buffer) => {
@@ -164,16 +235,21 @@ export function runGeminiStyleHeadless(
 
   child.on("close", (code) => {
     let replied = false;
+    let handledError = false;
     if ((code ?? -1) === 0 || buf.trim()) {
-      const result = parseGeminiOutput(buf);
-      if (result.error) onEvent({ raw: {}, type: "error", text: result.error });
-      else if (result.response) {
+      const result = cli === "qwen" ? parseQwenOutput(buf) : parseGeminiOutput(buf);
+      if (result.error) {
+        onEvent({ raw: {}, type: "error", text: result.error });
+        handledError = true;
+      } else if (result.response) {
         onEvent({ raw: {}, type: "assistant", text: result.response });
         replied = true;
       }
     }
-    if ((code ?? -1) !== 0 && !replied) {
-      onEvent({ raw: {}, type: "error", text: stderrTail() || `${cli} 退出码 ${code ?? -1}` });
+    if ((code ?? -1) !== 0 && !replied && !handledError) {
+      const tail = stderrTail();
+      const msg = extractStderrJsonError(tail);
+      onEvent({ raw: {}, type: "error", text: msg ?? (tail || `${cli} 退出码 ${code ?? -1}`) });
     }
     onEvent({ raw: {}, type: "exit", text: String(code ?? -1) });
   });

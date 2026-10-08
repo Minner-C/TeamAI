@@ -35,7 +35,7 @@ pnpm --filter @teamai/server test:e2e:git    # Git 托管（23 项，含真实 c
 pnpm --filter @teamai/server test:e2e:repos  # 仓库成员权限隔离（25 项）
 pnpm --filter @teamai/server test:e2e:envs   # 在线环境 + Web 终端（26 项）
 pnpm --filter @teamai/server test:e2e:files  # 文件上传/下载/隔离（19 项）
-pnpm --filter @teamai/client test:adapters   # CLI headless 适配器（29 项，mock CLI 端到端）
+pnpm --filter @teamai/client test:adapters   # CLI headless 适配器（38 项，mock CLI 端到端）
 ```
 
 浏览器预览模式：`pnpm dev:server` 后再起 `pnpm --filter @teamai/client exec vite`，访问 http://localhost:5173 可直接登录使用（Vite 代理转发到服务端）；Git 克隆、CLI 检测等本地能力仅在 Electron 中可用。

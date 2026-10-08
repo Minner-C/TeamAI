@@ -5,9 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   codexArgs,
-  geminiArgs,
+  geminiStyleArgs,
   parseCodexLine,
   parseGeminiOutput,
+  parseQwenOutput,
   runCodexHeadless,
   runGeminiStyleHeadless,
   type HeadlessEvent,
@@ -43,12 +44,16 @@ check("qwen 网关注入：OpenAI 兼容 + qwen3-coder-plus",
 check("kimi/gemini 不注入", gatewayEnvForCli("kimi", "x", "k") === null && gatewayEnvForCli("gemini", "x", "k") === null);
 
 const codexArgv = codexArgs("修复测试");
-check("codex 参数：exec --json --full-auto --skip-git-repo-check + prompt",
-  codexArgv.join(" ") === 'exec --json --full-auto --skip-git-repo-check 修复测试', codexArgv.join(" "));
+check("codex 参数：exec --json --skip-git-repo-check -s workspace-write + prompt",
+  codexArgv.join(" ") === 'exec --json --skip-git-repo-check -s workspace-write 修复测试', codexArgv.join(" "));
 
-const geminiArgv = geminiArgs("你好");
+const geminiArgv = geminiStyleArgs("gemini", "你好");
 check("gemini 参数：-p + --output-format json + --yolo",
   geminiArgv.join(" ") === '-p 你好 --output-format json --yolo', geminiArgv.join(" "));
+
+const qwenArgv = geminiStyleArgs("qwen", "你好");
+check("qwen 参数：位置 prompt（-p 已废弃）+ --output-format json + --yolo",
+  qwenArgv.join(" ") === '你好 --output-format json --yolo', qwenArgv.join(" "));
 
 const ev1 = parseCodexLine('{"type":"item.completed","item":{"id":"i3","type":"agent_message","text":"回复文本"}}');
 check("codex agent_message → assistant", ev1?.type === "assistant" && ev1.text === "回复文本");
@@ -77,6 +82,12 @@ check("codex 旧版 item_type/assistant_message 兼容", ev8?.type === "assistan
 const ev9 = parseCodexLine("这不是 JSON");
 check("codex 非 JSON 行 → unparsed", ev9?.type === "unparsed");
 
+const ev10 = parseCodexLine('{"type":"error","message":"Reconnecting... 2/5 (stream disconnected)"}');
+check("codex 瞬时 Reconnecting 错误降级为 stderr", ev10?.type === "stderr");
+
+const ev11 = parseCodexLine('{"type":"item.completed","item":{"id":"i0","type":"error","message":"Falling back from WebSockets"}}');
+check("codex item.type=error → error 事件", ev11?.type === "error" && ev11.text === "Falling back from WebSockets");
+
 const g1 = parseGeminiOutput('{"response":"gemini 回复","stats":{}}');
 check("gemini JSON → response", g1.response === "gemini 回复" && !g1.error);
 
@@ -88,6 +99,15 @@ check("gemini 非 JSON 兜底为文本", g3.response === "纯文本输出");
 
 const g4 = parseGeminiOutput("   ");
 check("gemini 空输出 → error", !!g4.error);
+
+const q1 = parseQwenOutput('[{"type":"result","subtype":"success","is_error":false,"result":"qwen 最终回复"}]');
+check("qwen result 数组 → response", q1.response === "qwen 最终回复" && !q1.error);
+
+const q2 = parseQwenOutput('[{"type":"result","subtype":"error_during_execution","is_error":true,"error":{"message":"No auth type is selected."}}]');
+check("qwen result error → error", q2.error === "No auth type is selected.");
+
+const q3 = parseQwenOutput('[{"type":"assistant","message":{"content":[{"type":"text","text":"中间回复"}]}},{"type":"result","is_error":false,"result":"  "}]');
+check("qwen result 为空 → 回退 assistant 文本", q3.response === "中间回复");
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "teamai-mock-cli-"));
 
@@ -127,6 +147,20 @@ console.error("boom on stderr");
 process.exit(1);
 `);
 
+const mockGeminiStderrJson = writeMock("fake-gemini-stderr-json.mjs", `
+console.error("YOLO mode is enabled. All tool calls will be automatically approved.");
+console.error(JSON.stringify({ session_id: "s1", error: { type: "Error", message: "Please set an Auth method" } }, null, 2));
+process.exit(41);
+`);
+
+const mockQwen = writeMock("fake-qwen.mjs", `
+console.log(JSON.stringify([
+  { type: "assistant", message: { content: [{ type: "text", text: "qwen 思考回复" }] } },
+  { type: "result", subtype: "success", is_error: false, result: "qwen 最终回复" },
+]));
+console.error("Warning: yolo notice");
+`);
+
 function collect(run: (onEvent: (ev: HeadlessEvent) => void) => void): Promise<HeadlessEvent[]> {
   return new Promise((resolve) => {
     const events: HeadlessEvent[] = [];
@@ -160,6 +194,15 @@ check("mock gemini：warning 不产生 error 事件", !geminiEvents.some((e) => 
 const geminiFailEvents = await collect((cb) => runGeminiStyleHeadless("qwen", { prompt: "干活", cwd, command: mockGeminiFail }, cb));
 check("mock qwen 失败：error 含 stderr 内容",
   geminiFailEvents.some((e) => e.type === "error" && (e.text ?? "").includes("boom")), JSON.stringify(geminiFailEvents));
+
+const geminiStderrEvents = await collect((cb) => runGeminiStyleHeadless("gemini", { prompt: "干活", cwd, command: mockGeminiStderrJson }, cb));
+check("mock gemini：stderr JSON 错误提取 message",
+  geminiStderrEvents.some((e) => e.type === "error" && e.text === "Please set an Auth method"), JSON.stringify(geminiStderrEvents));
+
+const qwenEvents = await collect((cb) => runGeminiStyleHeadless("qwen", { prompt: "干活", cwd, command: mockQwen }, cb));
+check("mock qwen：收到 assistant 回复（result 字段）",
+  qwenEvents.some((e) => e.type === "assistant" && e.text === "qwen 最终回复"), JSON.stringify(qwenEvents));
+check("mock qwen：yolo warning 不产生 error 事件", !qwenEvents.some((e) => e.type === "error"));
 
 const missingCmdEvents = await collect((cb) =>
   runCodexHeadless({ prompt: "干活", cwd, command: "definitely-not-exist-cli-xyz" }, cb));
