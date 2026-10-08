@@ -19,6 +19,7 @@ export interface TeamAiApi {
   detectClis(): Promise<
     Array<{ kind: string; channel: string; command: string; installed: boolean; version: string | null }>
   >;
+  installCli(kind: string): Promise<{ ok: boolean; output: string; installed: boolean; version: string | null }>;
   listModelRoutes(): Promise<Array<{ model: string; cli: string; providerType: string }>>;
   serverHealth(): Promise<boolean>;
   setServerUrl(url: string): Promise<boolean>;

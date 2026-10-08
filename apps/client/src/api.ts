@@ -366,6 +366,11 @@ export const api = {
     return [] as Array<{ kind: string; channel: string; command: string; installed: boolean; version: string | null }>;
   },
 
+  async installCli(kind: string) {
+    if (isElectron) return window.teamai.installCli(kind);
+    return { ok: false, output: "仅桌面客户端支持一键安装", installed: false, version: null };
+  },
+
   async listRepos() {
     if (isElectron) return window.teamai.listRepos();
     const res = await directFetch("/api/repos");

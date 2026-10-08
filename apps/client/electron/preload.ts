@@ -9,6 +9,7 @@ export interface ChatChunk {
 
 const api = {
   detectClis: () => ipcRenderer.invoke("cli:detect"),
+  installCli: (kind: string) => ipcRenderer.invoke("cli:install", kind),
   listModelRoutes: () => ipcRenderer.invoke("models:routes"),
   serverHealth: () => ipcRenderer.invoke("server:health"),
   setServerUrl: (url: string) => ipcRenderer.invoke("server:setUrl", url),

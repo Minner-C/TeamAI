@@ -14,11 +14,69 @@ import {
   SaveOutlined,
   SearchOutlined,
   StopOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 import { api, type AgentChunk, type SessionView } from "../api";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import { useAppStore } from "../store/appStore";
 import Markdown from "../components/Markdown";
+import { collapseSame, lineDiff } from "../utils/diff";
+
+function DiffBlock({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const rows = useMemo(() => lineDiff(oldStr, newStr), [oldStr, newStr]);
+  const lines = useMemo(() => collapseSame(rows, 3), [rows]);
+  return (
+    <div className="diff-body">
+      {lines.map((l, i) =>
+        l.type === "fold" ? (
+          <div key={i} className="diff-fold" onClick={() => setExpanded(true)}>
+            … {l.count} 行未更改（点击展开）…
+          </div>
+        ) : (
+          <div key={i} className={`diff-row diff-${l.type}`}>
+            <span className="diff-sign">{l.type === "add" ? "+" : l.type === "del" ? "-" : " "}</span>
+            {l.text || " "}
+          </div>
+        ),
+      )}
+      {expanded && (
+        <>
+          <div className="diff-fold">—— 完整内容 ——</div>
+          {rows.map((r, i) => (
+            <div key={`all-${i}`} className={`diff-row diff-${r.type}`}>
+              <span className="diff-sign">{r.type === "add" ? "+" : r.type === "del" ? "-" : " "}</span>
+              {r.text || " "}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PermissionDiff({ toolName, input }: { toolName: string; input: Record<string, unknown> }) {
+  const filePath = typeof input.file_path === "string" ? input.file_path : "";
+  const edits: Array<{ oldStr: string; newStr: string }> = [];
+  if ((toolName === "Edit" || toolName === "NotebookEdit") && typeof input.old_string === "string") {
+    edits.push({ oldStr: input.old_string, newStr: String(input.new_string ?? "") });
+  } else if (toolName === "MultiEdit" && Array.isArray(input.edits)) {
+    for (const e of input.edits as Array<{ old_string?: unknown; new_string?: unknown }>) {
+      edits.push({ oldStr: String(e.old_string ?? ""), newStr: String(e.new_string ?? "") });
+    }
+  } else if (toolName === "Write" && typeof input.content === "string") {
+    edits.push({ oldStr: "", newStr: input.content });
+  }
+  if (edits.length === 0) return null;
+  return (
+    <div className="diff-wrap">
+      {filePath && <div className="diff-file">{filePath}</div>}
+      {edits.map((e, i) => (
+        <DiffBlock key={i} oldStr={e.oldStr} newStr={e.newStr} />
+      ))}
+    </div>
+  );
+}
 
 interface ChatItem {
   role: "user" | "assistant";
@@ -89,6 +147,7 @@ export default function AgentPage() {
     taskId: string;
     requestId: string;
     toolName: string;
+    input: Record<string, unknown>;
     description?: string;
   } | null>(null);
   const requestIdRef = useRef(0);
@@ -99,6 +158,9 @@ export default function AgentPage() {
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ output: string; repo: string } | null>(null);
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffTarget, setHandoffTarget] = useState<string>();
+  const [handoffBusy, setHandoffBusy] = useState(false);
   const [syncForm] = Form.useForm();
 
   useEffect(() => {
@@ -172,6 +234,7 @@ export default function AgentPage() {
           taskId: chunk.taskId,
           requestId: chunk.permission.requestId,
           toolName: chunk.permission.toolName,
+          input: chunk.permission.input ?? {},
           description: chunk.permission.description,
         });
         return;
@@ -286,6 +349,69 @@ export default function AgentPage() {
       if (last?.streaming) next[next.length - 1] = { ...last, streaming: false };
       return next;
     });
+  }
+
+  async function summarizeConversation(): Promise<string> {
+    const transcript = items
+      .filter((i) => i.content.trim())
+      .map((i) => `${i.role === "user" ? "用户" : "助手"}：${i.content}`)
+      .join("\n\n")
+      .slice(-12000);
+    if (offline || !model) return transcript.slice(-4000);
+    const requestId = `req-handoff-${Date.now()}`;
+    return new Promise<string>((resolve, reject) => {
+      let buf = "";
+      const timer = setTimeout(() => {
+        off();
+        reject(new Error("生成摘要超时"));
+      }, 90_000);
+      const off = api.onChatChunk((chunk) => {
+        if (chunk.requestId !== requestId) return;
+        if (chunk.delta) buf += chunk.delta;
+        if (chunk.error) {
+          clearTimeout(timer);
+          off();
+          reject(new Error(chunk.error));
+        }
+        if (chunk.done) {
+          clearTimeout(timer);
+          off();
+          resolve(buf.trim());
+        }
+      });
+      api
+        .chatSend(requestId, model, [
+          {
+            role: "user",
+            content: `请把以下对话浓缩成一份「任务交接摘要」，供另一个 AI CLI 无缝接手继续工作。要求：1) 已完成的结论和改动要点；2) 当前正在进行的事与下一步计划；3) 关键文件路径、命令、决策原因；4) 不超过 600 字，直接输出摘要正文。\n\n${transcript}`,
+          },
+        ])
+        .catch((err) => {
+          clearTimeout(timer);
+          off();
+          reject(err instanceof Error ? err : new Error("生成摘要失败"));
+        });
+    });
+  }
+
+  async function doHandoff() {
+    if (!handoffTarget) return;
+    setHandoffBusy(true);
+    try {
+      const summary = await summarizeConversation();
+      const target = handoffTarget;
+      setHandoffOpen(false);
+      newChat();
+      setCli(target);
+      setInput(`以下是上一个会话（${cli ?? "其他 CLI"}）的交接摘要，请在此基础上继续工作：\n\n${summary}`);
+      message.success(`已切换到 ${target}，摘要已填入输入框，可直接发送`);
+      setTimeout(() => inputRef.current?.focus(), 80);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "生成摘要失败");
+    } finally {
+      setHandoffBusy(false);
+      setHandoffTarget(undefined);
+    }
   }
 
   async function saveSession() {
@@ -445,6 +571,15 @@ export default function AgentPage() {
               disabled={items.length === 0 || sending}
             >
               存档
+            </Button>
+          )}
+          {mode === "cli" && clis.length > 1 && items.length > 0 && !sending && (
+            <Button
+              size="small"
+              icon={<SwapOutlined />}
+              onClick={() => setHandoffOpen(true)}
+            >
+              切换 CLI
             </Button>
           )}
         </div>
@@ -665,8 +800,47 @@ export default function AgentPage() {
       </Modal>
 
       <Modal
+        title="切换 CLI 继续当前任务"
+        open={handoffOpen}
+        onCancel={() => {
+          if (!handoffBusy) {
+            setHandoffOpen(false);
+            setHandoffTarget(undefined);
+          }
+        }}
+        onOk={() => void doHandoff()}
+        okText={handoffBusy ? "生成摘要中…" : "生成摘要并切换"}
+        okButtonProps={{ loading: handoffBusy, disabled: !handoffTarget }}
+        cancelButtonProps={{ disabled: handoffBusy }}
+        width={520}
+      >
+        <p style={{ fontSize: 13, color: "#9a9aa0" }}>
+          将把当前对话浓缩为一份任务交接摘要，开启新会话并切换到目标 CLI，摘要会自动填入输入框，确认无误后发送即可无缝接手。
+        </p>
+        <Form layout="vertical">
+          <Form.Item label="目标 CLI" required>
+            <Select
+              placeholder="选择要接手任务的 CLI"
+              value={handoffTarget}
+              onChange={setHandoffTarget}
+              options={clis
+                .filter((c) => c.kind !== cli)
+                .map((c) => ({
+                  value: c.kind,
+                  label: `${c.kind}（${c.channel}）`,
+                }))}
+            />
+          </Form.Item>
+        </Form>
+        <p style={{ fontSize: 12, color: "#6d6d73" }}>
+          当前会话记录不会被删除，可随时从左侧会话列表切回。
+        </p>
+      </Modal>
+
+      <Modal
         title="CLI 请求工具权限"
         open={permission !== null}
+        width={720}
         okText="允许"
         cancelText="拒绝"
         onOk={() => {
@@ -681,6 +855,9 @@ export default function AgentPage() {
         <p>
           Claude 想要使用工具 <Tag color="orange">{permission?.toolName}</Tag>
         </p>
+        {permission && (
+          <PermissionDiff toolName={permission.toolName} input={permission.input} />
+        )}
         {permission?.description && (
           <p style={{ fontSize: 12, color: "#9a9aa0" }}>{permission.description}</p>
         )}

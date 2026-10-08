@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Typography, Form, Input, Button, Table, Tag, message } from "antd";
+import { Typography, Form, Input, Button, Table, Tag, Modal, message } from "antd";
+import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/appStore";
 import { api } from "../api";
 
@@ -14,14 +15,43 @@ interface CliRow {
 export default function SettingsPage() {
   const { serverUrl, setServerUrl, user, logout, setOffline } = useAppStore();
   const [clis, setClis] = useState<CliRow[]>([]);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  function refreshClis() {
     if (!api.isElectron) return;
+    setRefreshing(true);
     api
       .detectClis()
       .then(setClis)
-      .catch((err) => message.error(`CLI 检测失败：${err.message}`));
+      .catch((err) => message.error(`CLI 检测失败：${err.message}`))
+      .finally(() => setRefreshing(false));
+  }
+
+  useEffect(() => {
+    refreshClis();
   }, []);
+
+  async function installOne(kind: string) {
+    setInstalling(kind);
+    try {
+      const res = await api.installCli(kind);
+      if (res.ok) {
+        message.success(`${kind} 安装完成（${res.version ?? "已就绪"}）`);
+      } else {
+        Modal.error({
+          title: `${kind} 安装失败`,
+          width: 560,
+          content: <pre className="cli-install-log">{res.output}</pre>,
+        });
+      }
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "安装失败");
+    } finally {
+      setInstalling(null);
+      refreshClis();
+    }
+  }
 
   return (
     <div className="page-card">
@@ -83,12 +113,18 @@ export default function SettingsPage() {
         </>
       )}
 
-      <Typography.Title level={5} style={{ marginTop: 32 }}>
-        AI CLI 检测
-      </Typography.Title>
+      <div style={{ display: "flex", alignItems: "center", marginTop: 32 }}>
+        <Typography.Title level={5} style={{ margin: 0, flex: 1 }}>
+          AI CLI 检测
+        </Typography.Title>
+        <Button size="small" icon={<ReloadOutlined />} loading={refreshing} onClick={refreshClis}>
+          重新检测
+        </Button>
+      </div>
       <Table
         size="small"
         pagination={false}
+        style={{ marginTop: 12 }}
         dataSource={clis.map((c) => ({ ...c, key: c.kind }))}
         columns={[
           { title: "CLI", dataIndex: "kind" },
@@ -99,8 +135,28 @@ export default function SettingsPage() {
             render: (_, r: CliRow) =>
               r.installed ? <Tag color="success">{r.version}</Tag> : <Tag>未安装</Tag>,
           },
+          {
+            title: "操作",
+            render: (_, r: CliRow) =>
+              r.installed ? null : (
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  icon={<DownloadOutlined />}
+                  loading={installing === r.kind}
+                  disabled={installing !== null}
+                  onClick={() => void installOne(r.kind)}
+                >
+                  一键安装
+                </Button>
+              ),
+          },
         ]}
       />
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        一键安装通过 npm 全局安装官方 CLI 包，需要本机已安装 Node.js 且网络可访问 npm registry。
+      </Typography.Text>
     </div>
   );
 }

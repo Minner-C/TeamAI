@@ -1,5 +1,5 @@
 import { ipcMain, dialog } from "electron";
-import { detectClis } from "./headlessManager.js";
+import { detectClis, installCli } from "./headlessManager.js";
 import { listModelRoutes } from "./modelRegistry.js";
 import { cloneRepo, pushWorkspace } from "./gitWorkspace.js";
 import { ideListDir, ideReadFile, ideWriteFile } from "./ideWorkspace.js";
@@ -26,6 +26,7 @@ import {
 export function registerIpcHandlers() {
   let latestImClient: ImClient | null = null;
   ipcMain.handle("cli:detect", () => detectClis());
+  ipcMain.handle("cli:install", (_e, kind: string) => installCli(kind));
   ipcMain.handle("models:routes", () => listModelRoutes());
   ipcMain.handle("server:health", () => checkServerHealth());
   ipcMain.handle("server:setUrl", (_e, url: string) => {
