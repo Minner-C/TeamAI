@@ -3,6 +3,7 @@ import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import WebSocket from "ws";
 
 const PORT = await new Promise((resolve) => {
   const s = http.createServer();
@@ -169,6 +170,53 @@ try {
   await fetch(`${BASE}/api/envs/${envNoRepo.id}`, { method: "DELETE", headers: authH });
 
   check("runner 后端自动降级为 process（沙箱无 docker）", list.runner === "process", list.runner);
+
+  const termWs = new WebSocket(`ws://localhost:${PORT}/api/envs/${env.id}/terminal?token=${encodeURIComponent(token)}`);
+  const termEvents = [];
+  let termOutput = "";
+  let termGreeted = false;
+  let termExiting = false;
+  const termDone = new Promise((resolve) => {
+    termWs.on("message", (raw) => {
+      const ev = JSON.parse(raw.toString());
+      termEvents.push(ev);
+      if (ev.type === "output") {
+        termOutput += ev.data;
+        if (!termGreeted) {
+          termGreeted = true;
+          termWs.send(JSON.stringify({ type: "input", data: "echo term-$((40+2))\n" }));
+        }
+        if (termOutput.includes("term-42") && !termExiting) {
+          termExiting = true;
+          termWs.send(JSON.stringify({ type: "input", data: "exit\n" }));
+        }
+      }
+      if (ev.type === "exit") resolve();
+    });
+    termWs.on("close", resolve);
+  });
+  await new Promise((resolve, reject) => {
+    termWs.on("open", resolve);
+    termWs.on("error", reject);
+  });
+  await Promise.race([termDone, sleep(8000)]);
+  check("终端 WS 鉴权并就绪", termEvents.some((e) => e.type === "ready"), JSON.stringify(termEvents).slice(0, 200));
+  check("终端输入执行并返回结果", termOutput.includes("term-42"), termOutput.slice(-200));
+  check("终端会话可退出", termEvents.some((e) => e.type === "exit"));
+
+  const badTermWs = new WebSocket(`ws://localhost:${PORT}/api/envs/${env.id}/terminal?token=bad-token`);
+  const badTermEv = await new Promise((resolve) => {
+    badTermWs.on("message", (raw) => resolve(JSON.parse(raw.toString())));
+    badTermWs.on("close", () => resolve(null));
+  });
+  check("非法 token 终端连接被拒", badTermEv && badTermEv.type === "error");
+
+  const memberTermWs = new WebSocket(`ws://localhost:${PORT}/api/envs/${env.id}/terminal?token=${encodeURIComponent(memberLogin.token)}`);
+  const memberTermEv = await new Promise((resolve) => {
+    memberTermWs.on("message", (raw) => resolve(JSON.parse(raw.toString())));
+    memberTermWs.on("close", () => resolve(null));
+  });
+  check("成员无法打开他人环境终端", memberTermEv && memberTermEv.type === "error" && memberTermEv.message === "not found");
 
   const auditDenied = await fetch(`${BASE}/api/admin/audit`, { headers: mH });
   check("成员无法查看审计日志", auditDenied.status === 403);

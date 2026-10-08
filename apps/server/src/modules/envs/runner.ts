@@ -198,6 +198,45 @@ export async function execInEnv(
   }
 }
 
+let scriptPtyChecked = false;
+let scriptPtyAvailable = false;
+
+async function hasScriptPty(): Promise<boolean> {
+  if (scriptPtyChecked) return scriptPtyAvailable;
+  scriptPtyChecked = true;
+  try {
+    const { stdout } = await execFileAsync("script", ["--version"], { timeout: 3000 });
+    scriptPtyAvailable = /util-linux/.test(stdout);
+  } catch {
+    scriptPtyAvailable = false;
+  }
+  return scriptPtyAvailable;
+}
+
+export interface TerminalSpawn {
+  cmd: string;
+  args: string[];
+  cwd?: string;
+  pty: boolean;
+}
+
+export async function terminalCommand(env: EnvRow): Promise<TerminalSpawn> {
+  const shellCmd =
+    backend === "docker" && isRunning(env.id)
+      ? `docker exec -it -w /workspace ${containerName(env.id)} sh`
+      : "sh";
+  if (process.platform === "win32") {
+    return { cmd: "cmd.exe", args: [], cwd: env.workdir, pty: false };
+  }
+  if (await hasScriptPty()) {
+    return { cmd: "script", args: ["-qfc", shellCmd, "/dev/null"], cwd: env.workdir, pty: true };
+  }
+  if (backend === "docker" && isRunning(env.id)) {
+    return { cmd: "docker", args: ["exec", "-i", "-w", "/workspace", containerName(env.id), "sh"], pty: false };
+  }
+  return { cmd: "sh", args: [], cwd: env.workdir, pty: false };
+}
+
 export async function reconcileOnBoot(db: Db): Promise<void> {
   if (backend !== "docker") {
     db.prepare("UPDATE environments SET status = 'stopped', pid = NULL WHERE status = 'running'").run();

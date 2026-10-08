@@ -29,5 +29,8 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    rollupOptions: {
+      maxParallelFileOps: 50,
+    },
   },
 });

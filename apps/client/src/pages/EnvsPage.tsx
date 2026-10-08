@@ -20,8 +20,10 @@ import {
   PauseOutlined,
   PlusOutlined,
   RocketOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import { api, type EnvView, type RepoView } from "../api";
+import EnvTerminal from "../components/EnvTerminal";
 
 export default function EnvsPage() {
   const [envs, setEnvs] = useState<EnvView[]>([]);
@@ -33,6 +35,7 @@ export default function EnvsPage() {
   const [execCmd, setExecCmd] = useState("");
   const [execOut, setExecOut] = useState("");
   const [execRunning, setExecRunning] = useState(false);
+  const [termEnv, setTermEnv] = useState<EnvView | null>(null);
   const [form] = Form.useForm();
   const logTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -163,6 +166,9 @@ export default function EnvsPage() {
                   日志
                 </Button>
                 <Button size="small" icon={<CodeOutlined />} onClick={() => { setExecEnv(env); setExecOut(""); }}>
+                  执行
+                </Button>
+                <Button size="small" icon={<ThunderboltOutlined />} onClick={() => setTermEnv(env)}>
                   终端
                 </Button>
                 <Popconfirm title="删除环境？工作区将被清除" onConfirm={async () => { await api.deleteEnv(env.id); refresh(); }}>
@@ -210,8 +216,19 @@ export default function EnvsPage() {
         <Typography.Text type="secondary">每 2 秒自动刷新</Typography.Text>
       </Drawer>
 
+      <Modal
+        title={`交互终端：${termEnv?.name ?? ""}`}
+        open={!!termEnv}
+        onCancel={() => setTermEnv(null)}
+        footer={null}
+        width={860}
+        destroyOnHidden
+      >
+        {termEnv && <EnvTerminal key={termEnv.id} envId={termEnv.id} />}
+      </Modal>
+
       <Drawer
-        title={`终端：${execEnv?.name ?? ""}`}
+        title={`单次执行：${execEnv?.name ?? ""}`}
         open={!!execEnv}
         onClose={() => setExecEnv(null)}
         width={560}

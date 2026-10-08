@@ -700,6 +700,43 @@ export const api = {
     if (!res.ok) throw new Error(`删除环境失败：${res.status}`);
   },
 
+  connectEnvTerminal(
+    envId: string,
+    handlers: {
+      onReady?: (info: { pty: boolean; message?: string }) => void;
+      onOutput?: (data: string) => void;
+      onExit?: (code: number) => void;
+      onError?: (message: string) => void;
+      onClose?: () => void;
+    },
+  ): { send: (data: string) => void; resize: (cols: number, rows: number) => void; close: () => void } {
+    const base = isElectron
+      ? directBaseUrl.replace(/^http/, "ws")
+      : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
+    const ws = new WebSocket(`${base}/api/envs/${envId}/terminal?token=${encodeURIComponent(directToken)}`);
+    ws.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data as string) as Record<string, unknown>;
+        if (ev.type === "ready") handlers.onReady?.({ pty: !!ev.pty, message: ev.message as string | undefined });
+        else if (ev.type === "output") handlers.onOutput?.(String(ev.data ?? ""));
+        else if (ev.type === "exit") handlers.onExit?.(Number(ev.code ?? -1));
+        else if (ev.type === "error") handlers.onError?.(String(ev.message ?? "unknown error"));
+      } catch {
+        // ignore malformed frames
+      }
+    };
+    ws.onclose = () => handlers.onClose?.();
+    return {
+      send: (data) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", data }));
+      },
+      resize: (cols, rows) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols, rows }));
+      },
+      close: () => ws.close(),
+    };
+  },
+
   connectIm(handler: (event: ImEvent) => void): () => void {
     if (isElectron) {
       void window.teamai.imConnect();
