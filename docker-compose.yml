@@ -1,0 +1,21 @@
+services:
+  teamai:
+    build: .
+    image: teamai-server:latest
+    container_name: teamai
+    ports:
+      - "${TEAMAI_PORT:-8787}:8787"
+    environment:
+      TEAMAI_JWT_SECRET: ${TEAMAI_JWT_SECRET:?请在 .env 中设置 TEAMAI_JWT_SECRET（openssl rand -hex 32）}
+      TEAMAI_ADMIN_EMAIL: ${TEAMAI_ADMIN_EMAIL:-admin@teamai.local}
+      TEAMAI_ADMIN_PASSWORD: ${TEAMAI_ADMIN_PASSWORD:-admin123}
+      TEAMAI_ENV_RUNNER: ${TEAMAI_ENV_RUNNER:-auto}
+      TEAMAI_ENV_IMAGE: ${TEAMAI_ENV_IMAGE:-node:22-alpine}
+    volumes:
+      - teamai-data:/data
+      # 在线环境使用 docker 后端时：取消下行注释并设置 TEAMAI_ENV_RUNNER=docker
+      # - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  teamai-data:

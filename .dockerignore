@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+apps/client
+**/*.log
+.git
+.gitignore
+data
+apps/server/data
+docs
+scripts
+*.md
+!README.md

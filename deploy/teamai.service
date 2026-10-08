@@ -1,0 +1,21 @@
+[Unit]
+Description=TeamAI Server (API + 管理控制台 + Git 托管 + 在线环境)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=teamai
+Group=teamai
+WorkingDirectory=/opt/teamai
+EnvironmentFile=/opt/teamai/.env
+ExecStart=/usr/bin/env pnpm --filter @teamai/server start
+Restart=on-failure
+RestartSec=5
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
