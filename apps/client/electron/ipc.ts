@@ -105,10 +105,10 @@ export function registerIpcHandlers() {
 
   ipcMain.handle(
     "agent:run",
-    async (event, input: { taskId: string; cli: string; cwd: string; prompt: string }) => {
+    async (event, input: { taskId: string; cli: string; cwd: string; prompt: string; viaGateway?: boolean }) => {
       await runAgentCli(input.taskId, input.cli, input.cwd, input.prompt, (ev) => {
         if (!event.sender.isDestroyed()) event.sender.send("agent:event", ev);
-      });
+      }, { viaGateway: input.viaGateway });
       return true;
     },
   );

@@ -12,6 +12,7 @@ import {
   runGeminiStyleHeadless,
   type HeadlessEvent,
 } from "../electron/headlessAdapters.ts";
+import { gatewayEnvForCli } from "../electron/modelRegistry.ts";
 
 let passed = 0;
 function check(name: string, cond: boolean, extra?: string) {
@@ -23,6 +24,23 @@ function check(name: string, cond: boolean, extra?: string) {
     process.exit(1);
   }
 }
+
+const claudeEnv = gatewayEnvForCli("claude", "http://10.0.0.2:8787", "tk-test");
+check("claude 网关注入：ANTHROPIC_BASE_URL + token + 模型",
+  claudeEnv?.ANTHROPIC_BASE_URL === "http://10.0.0.2:8787" &&
+  claudeEnv.ANTHROPIC_AUTH_TOKEN === "tk-test" &&
+  claudeEnv.ANTHROPIC_MODEL === "claude-sonnet-4-5", JSON.stringify(claudeEnv));
+
+const codexEnv = gatewayEnvForCli("codex", "http://10.0.0.2:8787", "tk-test");
+check("codex 网关注入：OPENAI_BASE_URL 带 /v1",
+  codexEnv?.OPENAI_BASE_URL === "http://10.0.0.2:8787/v1" && codexEnv.OPENAI_API_KEY === "tk-test" &&
+  codexEnv.OPENAI_MODEL === "gpt-5-codex", JSON.stringify(codexEnv));
+
+const qwenEnv = gatewayEnvForCli("qwen", "http://10.0.0.2:8787", "tk-test");
+check("qwen 网关注入：OpenAI 兼容 + qwen3-coder-plus",
+  qwenEnv?.OPENAI_MODEL === "qwen3-coder-plus", JSON.stringify(qwenEnv));
+
+check("kimi/gemini 不注入", gatewayEnvForCli("kimi", "x", "k") === null && gatewayEnvForCli("gemini", "x", "k") === null);
 
 const codexArgv = codexArgs("修复测试");
 check("codex 参数：exec --json --full-auto --skip-git-repo-check + prompt",

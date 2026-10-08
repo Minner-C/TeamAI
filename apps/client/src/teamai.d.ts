@@ -64,7 +64,7 @@ export interface TeamAiApi {
   }): Promise<string>;
   imConnect(): Promise<boolean>;
   imTyping(channelId: string): Promise<boolean>;
-  agentRun(input: { taskId: string; cli: string; cwd: string; prompt: string }): Promise<boolean>;
+  agentRun(input: { taskId: string; cli: string; cwd: string; prompt: string; viaGateway?: boolean }): Promise<boolean>;
   agentStop(taskId: string): Promise<boolean>;
   agentPermission(input: { taskId: string; requestId: string; allow: boolean }): Promise<boolean>;
   onAgentEvent(handler: (event: unknown) => void): () => void;

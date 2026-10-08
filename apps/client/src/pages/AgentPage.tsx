@@ -309,7 +309,13 @@ export default function AgentPage() {
         { role: "assistant", content: "", streaming: true, thought: "", tools: [] },
       ]);
       try {
-        await api.agentRun({ taskId, cli, cwd: workdir, prompt: text });
+        await api.agentRun({
+          taskId,
+          cli,
+          cwd: workdir,
+          prompt: text,
+          viaGateway: localStorage.getItem("teamai_cli_via_gateway") !== "0",
+        });
       } catch (err) {
         setSending(false);
         setItems((prev) => {
@@ -754,7 +760,12 @@ export default function AgentPage() {
           <div className="agent-input-hint">
             {mode === "gateway"
               ? `网关模式 · ${model ?? "未选模型"} · 用量计入团队统计`
-              : `本地 CLI · ${cli ?? "未选 CLI"}${workdir ? ` · ${workdir}` : " · 未选工作目录"}`}
+              : `本地 CLI · ${cli ?? "未选 CLI"}${workdir ? ` · ${workdir}` : " · 未选工作目录"}${
+                  !offline && (cli === "claude" || cli === "codex" || cli === "qwen") &&
+                  localStorage.getItem("teamai_cli_via_gateway") !== "0"
+                    ? " · 经网关计费"
+                    : ""
+                }`}
           </div>
         </div>
       </div>

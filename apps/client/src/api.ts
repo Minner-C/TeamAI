@@ -792,7 +792,7 @@ export const api = {
     }
   },
 
-  async agentRun(input: { taskId: string; cli: string; cwd: string; prompt: string }): Promise<void> {
+  async agentRun(input: { taskId: string; cli: string; cwd: string; prompt: string; viaGateway?: boolean }): Promise<void> {
     if (!isElectron) throw new Error("本地 CLI 模式仅在桌面客户端可用");
     const res = await window.teamai.agentRun(input);
     if (!res) throw new Error("启动失败");

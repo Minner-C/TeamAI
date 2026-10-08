@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Typography, Form, Input, Button, Table, Tag, Modal, message } from "antd";
+import { Typography, Form, Input, Button, Checkbox, Table, Tag, Modal, message } from "antd";
 import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useAppStore } from "../store/appStore";
 import { api } from "../api";
@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [clis, setClis] = useState<CliRow[]>([]);
   const [installing, setInstalling] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [viaGateway, setViaGateway] = useState(localStorage.getItem("teamai_cli_via_gateway") !== "0");
 
   function refreshClis() {
     if (!api.isElectron) return;
@@ -68,6 +69,17 @@ export default function SettingsPage() {
           <>
             <Form.Item label="当前用户">
               <Input value={`${user.name}（${user.email}）`} disabled />
+            </Form.Item>
+            <Form.Item label="本地 CLI 流量" extra="开启后，Claude/Codex/Qwen 任务自动注入团队网关凭据（自动创建 agent-auto 虚拟 Key），用量计入你的账户并受配额约束；Kimi/Gemini 暂不支持注入；离线模式下不生效">
+              <Checkbox
+                checked={viaGateway}
+                onChange={(e) => {
+                  setViaGateway(e.target.checked);
+                  localStorage.setItem("teamai_cli_via_gateway", e.target.checked ? "1" : "0");
+                }}
+              >
+                经服务端网关代理（计费与配额生效）
+              </Checkbox>
             </Form.Item>
             <Button onClick={logout}>退出登录</Button>
           </>

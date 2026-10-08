@@ -2,6 +2,8 @@ import type { ChildProcess } from "node:child_process";
 import { AcpClient } from "./acpClient.js";
 import { runClaudeHeadless, type ClaudePermissionRequest } from "./claudeAdapter.js";
 import { runCodexHeadless, runGeminiStyleHeadless, type HeadlessEvent } from "./headlessAdapters.js";
+import { gatewayEnvForCli } from "./modelRegistry.js";
+import { ensureAgentKey, getConnection } from "./serverClient.js";
 
 export interface AgentRunEvent {
   taskId: string;
@@ -25,14 +27,33 @@ function getAcp(): AcpClient {
   return acpSingleton;
 }
 
+export interface AgentRunOptions {
+  viaGateway?: boolean;
+}
+
+async function gatewayEnv(cli: string, viaGateway: boolean): Promise<Record<string, string> | undefined> {
+  if (!viaGateway) return undefined;
+  const conn = getConnection();
+  if (!conn.baseUrl || !conn.token) return undefined;
+  const key = await ensureAgentKey();
+  if (!key) return undefined;
+  return gatewayEnvForCli(cli, conn.baseUrl, key) ?? undefined;
+}
+
 export async function runAgentCli(
   taskId: string,
   cli: string,
   cwd: string,
   prompt: string,
   onEvent: (ev: AgentRunEvent) => void,
+  opts?: AgentRunOptions,
 ): Promise<void> {
   if (handles.has(taskId)) throw new Error("任务已在运行中");
+
+  const injectedEnv = await gatewayEnv(cli, opts?.viaGateway ?? true);
+  if (injectedEnv) {
+    onEvent({ taskId, kind: "thought", text: `本轮流量经服务端网关计费（${cli} → ${getConnection().baseUrl}）` });
+  }
 
   if (cli === "kimi") {
     const acp = getAcp();
@@ -65,6 +86,7 @@ export async function runAgentCli(
         prompt,
         cwd,
         interactive: true,
+        env: injectedEnv,
         onPermissionRequest: (req) =>
           new Promise<boolean>((resolve) => {
             handle.permissionResolvers.set(req.requestId, resolve);
@@ -105,8 +127,8 @@ export async function runAgentCli(
     };
     const child =
       cli === "codex"
-        ? runCodexHeadless({ prompt, cwd }, forward)
-        : runGeminiStyleHeadless(cli, { prompt, cwd }, forward);
+        ? runCodexHeadless({ prompt, cwd, env: injectedEnv }, forward)
+        : runGeminiStyleHeadless(cli, { prompt, cwd, env: injectedEnv }, forward);
     handle.child = child;
     handles.set(taskId, handle);
     return;

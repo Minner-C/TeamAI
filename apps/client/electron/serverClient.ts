@@ -40,6 +40,7 @@ export function getConnection(): ServerConnection {
 
 export function setConnection(baseUrl: string, token: string | null): void {
   connection = { baseUrl: normalizeBaseUrl(baseUrl), token, refreshToken: null };
+  agentKeyCache = null;
 }
 
 export function setTokens(token: string, refreshToken?: string): void {
@@ -92,7 +93,40 @@ export async function login(email: string, password: string): Promise<LoginResul
   const data = (await res.json()) as LoginResult;
   connection.token = data.token;
   connection.refreshToken = data.refreshToken ?? null;
+  agentKeyCache = null;
   return data;
+}
+
+let agentKeyCache: string | null = null;
+
+export async function ensureAgentKey(): Promise<string | null> {
+  if (!connection.baseUrl || !connection.token) return null;
+  if (agentKeyCache) return agentKeyCache;
+  try {
+    const res = await apiFetch("/api/keys");
+    if (res.ok) {
+      const data = (await res.json()) as {
+        keys: Array<{ key: string; name: string; revoked_at: number | null }>;
+      };
+      const existing = data.keys.find((k) => k.name === "agent-auto" && !k.revoked_at);
+      if (existing) {
+        agentKeyCache = existing.key;
+        return agentKeyCache;
+      }
+    }
+    const created = await apiFetch("/api/keys", {
+      method: "POST",
+      body: JSON.stringify({ name: "agent-auto" }),
+    });
+    if (created.ok) {
+      const row = (await created.json()) as { key: string };
+      agentKeyCache = row.key;
+      return agentKeyCache;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export async function listModels(): Promise<
